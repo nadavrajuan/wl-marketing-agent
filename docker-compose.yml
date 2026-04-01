@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wl_marketing_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wl_marketing
+      POSTGRES_USER: wl_user
+      POSTGRES_PASSWORD: wl_pass
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+volumes:
+  pg_data:

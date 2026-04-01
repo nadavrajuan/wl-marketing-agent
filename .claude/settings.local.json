@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(pip3 install:*)",
+      "Bash(gh auth:*)",
+      "Bash(gh repo:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(npx create-next-app@latest app --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --no-turbopack)",
+      "Bash(npm install:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker exec:*)",
+      "Bash(npm run:*)",
+      "Bash(curl -s http://localhost:3001/api/stats)",
+      "Bash(curl -s http://localhost:3002/api/stats)",
+      "Bash(curl -s http://localhost:3010/api/stats)",
+      "Bash(curl -s \"http://localhost:3010/api/segments?group_by=platform_id\")",
+      "Bash(curl -s \"http://localhost:3010/api/campaigns\")"
+    ]
+  }
+}
