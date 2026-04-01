@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — WL Marketing Agent{% endblock %}
+
+{% block content %}
+<div class="p-6">
+  <!-- Header -->
+  <div class="flex items-start justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-white">Analysis Runs</h1>
+      <p class="text-gray-400 text-sm mt-1">Iterative PPC optimization — Max conversions / Min price</p>
+    </div>
+    <button onclick="document.getElementById('new-run-modal').classList.remove('hidden')"
+            class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+      <span>+</span> New Analysis
+    </button>
+  </div>
+
+  <!-- DB Stats -->
+  {% if db_stats %}
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-gray-900 border border-emerald-800 rounded-xl p-4">
+      <div class="text-xs text-gray-400 uppercase tracking-wider mb-1">Total Revenue</div>
+      <div class="text-2xl font-bold text-white">${{ "{:,.0f}".format(db_stats.revenue|float) }}</div>
+    </div>
+    <div class="bg-gray-900 border border-blue-800 rounded-xl p-4">
+      <div class="text-xs text-gray-400 uppercase tracking-wider mb-1">Purchases</div>
+      <div class="text-2xl font-bold text-white">{{ db_stats.purchases }}</div>
+    </div>
+    <div class="bg-gray-900 border border-purple-800 rounded-xl p-4">
+      <div class="text-xs text-gray-400 uppercase tracking-wider mb-1">Events</div>
+      <div class="text-2xl font-bold text-white">{{ "{:,}".format(db_stats.total_events|int) }}</div>
+    </div>
+    <div class="bg-gray-900 border border-gray-700 rounded-xl p-4">
+      <div class="text-xs text-gray-400 uppercase tracking-wider mb-1">Campaigns</div>
+      <div class="text-2xl font-bold text-white">{{ db_stats.campaigns }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Run Stats -->
+  <div class="grid grid-cols-4 gap-4 mb-6">
+    {% for label, val, color in [
+      ('Total Runs', total_runs, 'border-gray-700'),
+      ('Completed', completed_runs, 'border-emerald-700'),
+      ('Running', running_runs, 'border-yellow-700'),
+      ('Failed', failed_runs, 'border-red-700'),
+    ] %}
+    <div class="bg-gray-900 border {{ color }} rounded-xl p-3 text-center">
+      <div class="text-xl font-bold text-white">{{ val }}</div>
+      <div class="text-xs text-gray-400">{{ label }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Runs Table -->
+  <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+    <div class="border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+      <span class="text-sm font-medium text-gray-300">Recent Runs</span>
+      <span class="text-xs text-gray-500">auto-refreshes when running</span>
+    </div>
+    {% if runs %}
+    <table class="w-full text-sm">
+      <thead class="border-b border-gray-800">
+        <tr class="text-gray-500 text-xs">
+          <th class="text-left py-2 px-4">Run ID</th>
+          <th class="text-left py-2 px-4">Status</th>
+          <th class="text-left py-2 px-4">Goal</th>
+          <th class="text-left py-2 px-4">Model</th>
+          <th class="text-right py-2 px-4">Iterations</th>
+          <th class="text-right py-2 px-4">Duration</th>
+          <th class="text-left py-2 px-4">Created</th>
+          <th class="py-2 px-4"></th>
+        </tr>
+      </thead>
+      <tbody id="runs-table">
+        {% for run in runs %}
+        <tr class="border-b border-gray-800/50 hover:bg-gray-800/30" id="run-{{ run.run_id }}">
+          <td class="py-2 px-4 font-mono text-xs text-indigo-400">{{ run.run_id }}</td>
+          <td class="py-2 px-4">
+            <span class="px-2 py-0.5 rounded-full text-xs
+              {% if run.status == 'completed' %}bg-emerald-900 text-emerald-300
+              {% elif run.status == 'running' %}bg-yellow-900 text-yellow-300
+              {% else %}bg-red-900 text-red-300{% endif %}">
+              {% if run.status == 'running' %}<span class="animate-pulse">●</span> {% endif %}
+              {{ run.status }}
+            </span>
+          </td>
+          <td class="py-2 px-4 text-gray-300 max-w-xs truncate text-xs">{{ run.goal or '—' }}</td>
+          <td class="py-2 px-4 text-gray-500 text-xs">{{ run.model or '—' }}</td>
+          <td class="py-2 px-4 text-right text-gray-400">{{ run.iteration_count or 0 }}</td>
+          <td class="py-2 px-4 text-right text-gray-400 text-xs">
+            {% if run.duration_seconds %}{{ "%.0f"|format(run.duration_seconds) }}s{% else %}—{% endif %}
+          </td>
+          <td class="py-2 px-4 text-gray-500 text-xs">
+            {{ run.created_at.strftime('%b %d %H:%M') if run.created_at else '—' }}
+          </td>
+          <td class="py-2 px-4">
+            <a href="/agent/runs/{{ run.run_id }}"
+               class="text-xs text-indigo-400 hover:text-indigo-300">View →</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="p-12 text-center text-gray-500">
+      <div class="text-4xl mb-3">🔍</div>
+      <div>No runs yet. Start your first analysis.</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- New Run Modal -->
+<div id="new-run-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-lg mx-4">
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="text-lg font-bold text-white">New Analysis Run</h2>
+      <button onclick="document.getElementById('new-run-modal').classList.add('hidden')"
+              class="text-gray-400 hover:text-white text-xl">&times;</button>
+    </div>
+
+    <div class="space-y-4">
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Analysis Goal</label>
+        <textarea id="run-goal" rows="3"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+          placeholder="e.g. Find the top 3 campaigns wasting budget and the top 3 performing keywords to scale">Find optimization opportunities — identify what's working, what's wasting budget, and top 5 actionable recommendations to maximize purchases and minimize cost.</textarea>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">Model</label>
+          <select id="run-model"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white">
+            <option value="gpt-4o">gpt-4o (recommended)</option>
+            <option value="gpt-4o-mini">gpt-4o-mini (faster)</option>
+            <option value="o1">o1 (deep reasoning)</option>
+            <option value="o3-mini">o3-mini</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">Max Iterations</label>
+          <select id="run-iterations"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white">
+            <option value="">Use config default</option>
+            <option value="3">3 (quick)</option>
+            <option value="5">5 (standard)</option>
+            <option value="8">8 (deep)</option>
+            <option value="12">12 (exhaustive)</option>
+          </select>
+        </div>
+      </div>
+      <div id="run-error" class="hidden bg-red-900/40 border border-red-700 rounded-lg p-3 text-red-300 text-sm"></div>
+      <button onclick="startRun()"
+              class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2">
+        <span id="run-btn-text">Start Analysis</span>
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Auto-refresh if any run is still running
+  const hasRunning = {{ 'true' if running_runs > 0 else 'false' }};
+  if (hasRunning) {
+    setInterval(() => { window.location.reload(); }, 8000);
+  }
+
+  async function startRun() {
+    const goal  = document.getElementById('run-goal').value.trim();
+    const model = document.getElementById('run-model').value;
+    const errEl = document.getElementById('run-error');
+    const btn   = document.getElementById('run-btn-text');
+
+    if (!goal) { errEl.textContent = 'Please enter a goal.'; errEl.classList.remove('hidden'); return; }
+
+    btn.textContent = 'Starting…';
+    errEl.classList.add('hidden');
+
+    try {
+      const r = await fetch('/agent/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal, model }),
+      });
+      const data = await r.json();
+      if (data.run_id) {
+        window.location.href = `/agent/runs/${data.run_id}`;
+      } else {
+        throw new Error(data.detail || 'Unknown error');
+      }
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.classList.remove('hidden');
+      btn.textContent = 'Start Analysis';
+    }
+  }
+</script>
+{% endblock %}

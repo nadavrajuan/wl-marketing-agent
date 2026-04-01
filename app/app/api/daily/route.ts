@@ -16,7 +16,8 @@ export async function GET(req: NextRequest) {
   const dateTo = params.get("date_to");
   if (dateTo) { conditions.push(`conversion_at <= $${idx++}`); values.push(dateTo); }
 
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  conditions.push("conversion_at IS NOT NULL");
+  const where = `WHERE ${conditions.join(" AND ")}`;
 
   const sql = `
     SELECT

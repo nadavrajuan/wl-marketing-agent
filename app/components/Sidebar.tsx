@@ -38,8 +38,19 @@ export default function Sidebar() {
           );
         })}
       </nav>
-      <div className="mt-auto px-2 pt-6 text-xs text-gray-600">
-        Goal: Max conversions / Min price
+      <div className="mt-auto px-2 pt-4 border-t border-gray-800">
+        <a
+          href="http://localhost:8003/agent/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-indigo-400 hover:text-white hover:bg-indigo-900/40 transition-colors"
+        >
+          <span className="text-base">⚡</span>
+          AI Agent
+        </a>
+        <div className="px-3 pt-2 text-xs text-gray-600">
+          Goal: Max conversions / Min price
+        </div>
       </div>
     </aside>
   );

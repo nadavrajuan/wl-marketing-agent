@@ -27,7 +27,9 @@ export default function DailyChart() {
     fetch("/api/daily").then((r) => r.json()).then(setData);
   }, []);
 
-  const formatted = data.map((d) => ({
+  const formatted = data
+    .filter((d) => d.date != null)
+    .map((d) => ({
     date: format(parseISO(d.date), "MMM d"),
     events: Number(d.total_events),
     quizStarts: Number(d.quiz_starts),

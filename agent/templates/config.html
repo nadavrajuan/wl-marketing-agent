@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Config — WL Marketing Agent{% endblock %}
+
+{% block content %}
+<div class="p-6 max-w-2xl">
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-white">Agent Configuration</h1>
+    <p class="text-gray-400 text-sm mt-1">Control how the analysis agent runs</p>
+  </div>
+
+  {% if request.query_params.get('saved') %}
+  <div class="bg-emerald-900/40 border border-emerald-700 rounded-lg p-3 text-emerald-300 text-sm mb-5">
+    ✓ Configuration saved
+  </div>
+  {% endif %}
+
+  <form method="POST" action="/agent/config" class="space-y-6">
+
+    <!-- Model -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-white mb-4">Model Settings</h2>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs text-gray-400 mb-2">OpenAI Model</label>
+          <select name="openai_model"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white">
+            {% for m in ['gpt-4o', 'gpt-4o-mini', 'o1', 'o1-mini', 'o3-mini'] %}
+            <option value="{{ m }}" {% if cfg.openai_model == m %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+          <p class="text-xs text-gray-500 mt-1">gpt-4o recommended for best balance of speed and quality.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Iterations -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-white mb-4">Analysis Depth</h2>
+      <div>
+        <label class="block text-xs text-gray-400 mb-2">
+          Max Iterations: <span id="iter-val" class="text-white font-medium">{{ cfg.max_iterations }}</span>
+        </label>
+        <input type="range" name="max_iterations"
+               min="2" max="12" step="1" value="{{ cfg.max_iterations }}"
+               oninput="document.getElementById('iter-val').textContent = this.value"
+               class="w-full accent-indigo-500" />
+        <div class="flex justify-between text-xs text-gray-600 mt-1">
+          <span>2 (quick)</span><span>6 (standard)</span><span>12 (exhaustive)</span>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">Each iteration = 1 query + analysis cycle. More iterations = deeper analysis but longer runtime.</p>
+      </div>
+    </div>
+
+    <!-- Email -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-white mb-4">Notifications (optional)</h2>
+      <div>
+        <label class="block text-xs text-gray-400 mb-2">Email Recipients (one per line)</label>
+        <textarea name="email_recipients" rows="3"
+                  placeholder="analyst@example.com"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none">{{ cfg.email_recipients }}</textarea>
+        <p class="text-xs text-gray-500 mt-1">Not implemented yet — coming soon.</p>
+      </div>
+    </div>
+
+    <!-- Database info -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-white mb-3">Data Source</h2>
+      <div class="space-y-2 text-sm">
+        <div class="flex gap-3">
+          <span class="text-gray-500 w-28">Database:</span>
+          <span class="text-gray-300">PostgreSQL (Docker, port 5434)</span>
+        </div>
+        <div class="flex gap-3">
+          <span class="text-gray-500 w-28">Table:</span>
+          <span class="font-mono text-indigo-400">public.conversions</span>
+        </div>
+        <div class="flex gap-3">
+          <span class="text-gray-500 w-28">Rows:</span>
+          <span class="text-gray-300">15,435</span>
+        </div>
+        <div class="flex gap-3">
+          <span class="text-gray-500 w-28">Date range:</span>
+          <span class="text-gray-300">Sep 2025 – Mar 2026</span>
+        </div>
+        <div class="flex gap-3">
+          <span class="text-gray-500 w-28">Access:</span>
+          <span class="text-emerald-400">Read-only (mutations blocked)</span>
+        </div>
+      </div>
+    </div>
+
+    <button type="submit"
+            class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-lg text-sm transition-colors">
+      Save Configuration
+    </button>
+  </form>
+</div>
+{% endblock %}

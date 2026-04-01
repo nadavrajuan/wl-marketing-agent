@@ -16,7 +16,28 @@
       "Bash(curl -s http://localhost:3002/api/stats)",
       "Bash(curl -s http://localhost:3010/api/stats)",
       "Bash(curl -s \"http://localhost:3010/api/segments?group_by=platform_id\")",
-      "Bash(curl -s \"http://localhost:3010/api/campaigns\")"
+      "Bash(curl -s \"http://localhost:3010/api/campaigns\")",
+      "Bash(git commit:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(git config:*)",
+      "Bash(curl -s \"http://localhost:3010/api/daily\")",
+      "Bash(curl -s \"http://localhost:3010/api/daily?_=$\\(date +%s\\)\")",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(curl -s http://localhost:8001/agent/login)",
+      "Bash(pkill -f \"uvicorn app:app\")",
+      "Bash(curl -s http://localhost:8002/agent/login)",
+      "Bash(curl -s http://localhost:8003/agent/login)",
+      "Bash(curl -s -c /tmp/wl_cookies.txt -b /tmp/wl_cookies.txt -X POST http://localhost:8003/agent/login -d 'username=admin&password=admin123' -L)",
+      "Bash(curl -s -c /tmp/wl_cookies.txt -b /tmp/wl_cookies.txt http://localhost:8003/agent/api/runs)",
+      "Bash(curl -sv -c /tmp/wl_cookies.txt -b /tmp/wl_cookies.txt -X POST http://localhost:8003/agent/login -d 'username=admin&password=admin123')",
+      "Bash(curl -s -b /tmp/wl_cookies.txt http://localhost:8003/agent/prompts)",
+      "Bash(curl -s -b /tmp/wl_cookies.txt http://localhost:8003/agent/config)",
+      "Bash(curl -s -c /tmp/wl_cookies2.txt -X POST http://localhost:8003/agent/login -d 'username=admin&password=admin123' -D -)",
+      "Bash(curl -s -b /tmp/wl_cookies2.txt http://localhost:8003/agent/)",
+      "Bash(curl -s -c /tmp/wl_cookies3.txt -X POST http://localhost:8003/agent/login -d 'username=admin&password=admin123' -L)",
+      "Bash(curl -s -b /tmp/wl_cookies3.txt -X POST http://localhost:8003/agent/api/run -H 'Content-Type: application/json' -d '{\"goal\":\"Quick test: What is the overall purchase CVR by platform and top 3 campaigns by revenue?\",\"model\":\"gpt-4o\"}')",
+      "Bash(curl -s -b /tmp/wl_cookies3.txt http://localhost:8003/agent/api/runs/9971452a)"
     ]
   }
 }

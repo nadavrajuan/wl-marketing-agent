@@ -1,0 +1,374 @@
+{% extends "base.html" %}
+{% block title %}Run {{ run.run_id }} — WL Marketing Agent{% endblock %}
+
+{% block content %}
+<div class="p-6">
+  <!-- Header -->
+  <div class="flex items-start justify-between mb-5">
+    <div>
+      <div class="flex items-center gap-3 mb-1">
+        <a href="/agent/" class="text-gray-500 hover:text-gray-300 text-sm">← Runs</a>
+        <span class="text-gray-700">/</span>
+        <span class="font-mono text-indigo-400 text-sm">{{ run.run_id }}</span>
+        <span class="px-2 py-0.5 rounded-full text-xs
+          {% if run.status == 'completed' %}bg-emerald-900 text-emerald-300
+          {% elif run.status == 'running' %}bg-yellow-900 text-yellow-300 animate-pulse
+          {% else %}bg-red-900 text-red-300{% endif %}">
+          {{ run.status }}
+        </span>
+      </div>
+      <h1 class="text-xl font-bold text-white max-w-2xl">{{ run.goal or 'Analysis Run' }}</h1>
+      <div class="text-xs text-gray-500 mt-1">
+        Model: {{ run.model }} ·
+        {% if run.duration_seconds %}{{ "%.0f"|format(run.duration_seconds) }}s · {% endif %}
+        {{ run.iteration_count }} iterations ·
+        {{ run.created_at.strftime('%b %d, %Y %H:%M') if run.created_at else '' }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="flex gap-1 border-b border-gray-800 mb-5 overflow-x-auto">
+    {% for tid, tlabel, ticon in [
+      ('timeline', 'Investigation Timeline', '🔬'),
+      ('flow', 'Agent Flow', '🗺️'),
+      ('executive', 'Executive Report', '📋'),
+      ('technical', 'Technical Report', '🔧'),
+      ('chat', 'Chat', '💬'),
+    ] %}
+    <button onclick="showTab('{{ tid }}')" id="tab-btn-{{ tid }}"
+            class="tab-btn flex items-center gap-1.5 px-4 py-2 text-sm rounded-t-lg transition-colors whitespace-nowrap
+                   {% if tid == 'timeline' %}bg-gray-800 text-white{% else %}text-gray-400 hover:text-white{% endif %}">
+      {{ ticon }} {{ tlabel }}
+    </button>
+    {% endfor %}
+  </div>
+
+  <!-- ── Timeline Tab ── -->
+  <div id="tab-timeline" class="tab-content">
+    {% if steps %}
+    <div class="space-y-3">
+      {% for step in steps %}
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <button onclick="toggleStep('step-{{ step.id }}')"
+                class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-800/30 transition-colors">
+          <div class="flex items-center gap-3">
+            <span class="w-7 h-7 bg-indigo-900 text-indigo-300 rounded-full flex items-center justify-center text-xs font-bold shrink-0">
+              {{ step.step_number }}
+            </span>
+            <span class="font-medium text-white text-sm">{{ step.step_name }}</span>
+            {% if step.rows_count %}
+            <span class="text-xs text-gray-500">{{ step.rows_count }} rows</span>
+            {% endif %}
+          </div>
+          <span class="text-gray-600 text-xs">▼</span>
+        </button>
+        <div id="step-{{ step.id }}" class="hidden border-t border-gray-800">
+          {% if step.thought %}
+          <div class="px-4 py-3">
+            <div class="text-xs text-gray-500 uppercase mb-2">Reasoning / Analysis</div>
+            <div data-markdown class="prose-dark text-sm">{{ step.thought }}</div>
+          </div>
+          {% endif %}
+          {% if step.sql %}
+          <div class="px-4 pb-3">
+            <div class="text-xs text-gray-500 uppercase mb-2">SQL Query</div>
+            <pre class="bg-gray-950 border border-gray-800 rounded-lg p-3 overflow-x-auto text-xs text-green-300 font-mono">{{ step.sql }}</pre>
+          </div>
+          {% endif %}
+          {% if step.result_summary and step.result_summary != '(no rows returned)' %}
+          <div class="px-4 pb-3">
+            <div class="text-xs text-gray-500 uppercase mb-2">Query Results</div>
+            <pre class="bg-gray-950 border border-gray-800 rounded-lg p-3 overflow-x-auto text-xs text-gray-300 font-mono max-h-60">{{ step.result_summary }}</pre>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% elif run.status == 'running' %}
+    <div class="text-center py-16 text-gray-400">
+      <div class="text-4xl mb-3 animate-spin">⚙️</div>
+      <div class="text-lg font-medium">Analysis in progress…</div>
+      <div class="text-sm mt-1">Page auto-refreshes every 6 seconds</div>
+    </div>
+    {% else %}
+    <div class="text-center py-12 text-gray-500">No steps recorded.</div>
+    {% endif %}
+  </div>
+
+  <!-- ── Flow Tab ── -->
+  <div id="tab-flow" class="tab-content hidden">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Mermaid diagram -->
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div class="text-sm font-medium text-gray-300 mb-4">Agent Graph</div>
+        <div class="mermaid">
+flowchart TD
+    A([🔍 DISCOVER<br/>Fetch schema & sample data]) --> B
+    B([📋 PLAN<br/>Build investigation strategy]) --> C
+    C([⚡ GENERATE QUERY<br/>Write PostgreSQL SQL]) --> D
+    D([▶️ EXECUTE<br/>Run query safely]) --> E
+    E([🧠 ANALYZE<br/>Extract insights]) --> F{Done?}
+    F -- No, continue --> C
+    F -- Yes --> G
+    G([📊 REPORT<br/>Generate dual reports]) --> H([✅ END])
+        </div>
+      </div>
+      <!-- Node descriptions + prompt links -->
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div class="text-sm font-medium text-gray-300 mb-4">Nodes & Prompts</div>
+        <div class="space-y-3">
+          {% for node, icon, desc, prompts_list in [
+            ('DISCOVER', '🔍', 'Fetches live schema & sample rows from PostgreSQL. No LLM call.', []),
+            ('PLAN', '📋', 'Builds a numbered investigation plan using the Investigation Playbook.', ['plan_system', 'plan_human']),
+            ('GENERATE QUERY', '⚡', 'Writes the next PostgreSQL SQL query for the current step.', ['query_system', 'query_human']),
+            ('EXECUTE', '▶️', 'Runs the SQL read-only against PostgreSQL. Validates safety.', []),
+            ('ANALYZE', '🧠', 'Interprets query results and extracts actionable findings.', ['analyze_system', 'analyze_human']),
+            ('REPORT', '📊', 'Generates Technical Report + Executive Report from all findings.', ['report_system', 'report_human']),
+          ] %}
+          <div class="bg-gray-800 rounded-lg p-3">
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-medium text-white text-sm">{{ icon }} {{ node }}</span>
+              {% if prompts_list %}
+              <div class="flex gap-1">
+                {% for p in prompts_list %}
+                <a href="/agent/prompts#{{ p }}" class="text-xs text-indigo-400 hover:underline">
+                  {{ p.replace('_', ' ') }}
+                </a>{% if not loop.last %}<span class="text-gray-600">·</span>{% endif %}
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+            <div class="text-xs text-gray-400">{{ desc }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="mt-4 pt-4 border-t border-gray-700">
+          <div class="text-xs text-gray-500 mb-2">Context injected into every LLM call:</div>
+          <div class="flex flex-wrap gap-2">
+            {% for p in ['domain_context', 'investigation_playbook', 'sql_reference'] %}
+            <a href="/agent/prompts#{{ p }}"
+               class="px-2 py-1 bg-gray-700 text-indigo-300 rounded text-xs hover:bg-gray-600 transition-colors">
+              {{ p.replace('_', ' ') }}
+            </a>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Run stats -->
+    {% if run.status == 'completed' %}
+    <div class="mt-6 bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <div class="text-sm font-medium text-gray-300 mb-3">Run Stats</div>
+      <div class="grid grid-cols-3 gap-4 text-sm">
+        <div><span class="text-gray-500">Iterations:</span> <span class="text-white font-medium">{{ run.iteration_count }}</span></div>
+        <div><span class="text-gray-500">Duration:</span> <span class="text-white font-medium">{{ "%.0f"|format(run.duration_seconds or 0) }}s</span></div>
+        <div><span class="text-gray-500">Model:</span> <span class="text-white font-medium">{{ run.model }}</span></div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Executive Report Tab ── -->
+  <div id="tab-executive" class="tab-content hidden">
+    {% if run.public_report %}
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+      <div data-markdown class="prose-dark">{{ run.public_report }}</div>
+    </div>
+    {% elif run.status == 'running' %}
+    <div class="text-center py-16 text-gray-400">Report will appear when the analysis completes.</div>
+    {% else %}
+    <div class="text-center py-12 text-gray-500">No report available.</div>
+    {% endif %}
+  </div>
+
+  <!-- ── Technical Report Tab ── -->
+  <div id="tab-technical" class="tab-content hidden">
+    {% if run.final_report %}
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+      <div data-markdown class="prose-dark">{{ run.final_report }}</div>
+    </div>
+    {% elif run.status == 'running' %}
+    <div class="text-center py-16 text-gray-400">Report will appear when the analysis completes.</div>
+    {% else %}
+    <div class="text-center py-12 text-gray-500">No report available.</div>
+    {% endif %}
+
+    {% if run.error_log %}
+    {% set errors = run.error_log | tojson | safe %}
+    {% if errors != '[]' %}
+    <div class="mt-4 bg-gray-900 border border-red-900 rounded-xl p-4">
+      <div class="text-xs text-red-400 font-medium mb-2">Error Log</div>
+      <pre class="text-xs text-red-300 font-mono whitespace-pre-wrap">{{ run.error_log }}</pre>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  <!-- ── Chat Tab ── -->
+  <div id="tab-chat" class="tab-content hidden flex flex-col" style="height: calc(100vh - 240px)">
+    <div class="bg-gray-900 border border-gray-800 rounded-xl flex flex-col h-full overflow-hidden">
+      <!-- Suggested questions -->
+      {% if run.status == 'completed' %}
+      <div class="px-4 py-3 border-b border-gray-800 flex flex-wrap gap-2">
+        <span class="text-xs text-gray-500">Try:</span>
+        {% for q in [
+          'Which campaigns should I pause immediately?',
+          'What are the top 3 keywords to scale?',
+          'Which landing page variant performs best?',
+          'How does Bing compare to Google efficiency?',
+          'What is the biggest funnel drop-off point?',
+        ] %}
+        <button onclick="setMessage(this.textContent)"
+                class="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded hover:bg-gray-700 transition-colors">
+          {{ q }}
+        </button>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Messages -->
+      <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4">
+        {% for msg in chat_messages %}
+        <div class="flex {% if msg.role == 'user' %}justify-end{% else %}justify-start{% endif %}">
+          <div class="max-w-2xl {% if msg.role == 'user' %}bg-indigo-900 text-indigo-100{% else %}bg-gray-800 text-gray-200{% endif %} rounded-xl px-4 py-3 text-sm">
+            {% if msg.role == 'assistant' %}
+            <div data-markdown class="prose-dark">{{ msg.content }}</div>
+            {% else %}
+            {{ msg.content }}
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+        <div id="typing-indicator" class="hidden flex justify-start">
+          <div class="bg-gray-800 rounded-xl px-4 py-3 text-sm text-gray-400">
+            <span class="animate-pulse">●●●</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input -->
+      <div class="border-t border-gray-800 p-4 flex gap-3">
+        <textarea id="chat-input" rows="2"
+          placeholder="Ask anything about this analysis…"
+          class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+          onkeydown="handleChatKey(event)"></textarea>
+        <button onclick="sendChat()"
+                class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors self-end">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const RUN_ID = '{{ run.run_id }}';
+  const RUN_STATUS = '{{ run.status }}';
+
+  // Tab switching
+  function showTab(id) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('bg-gray-800','text-white'));
+    document.getElementById('tab-' + id).classList.remove('hidden');
+    const btn = document.getElementById('tab-btn-' + id);
+    btn.classList.add('bg-gray-800','text-white');
+    btn.classList.remove('text-gray-400');
+  }
+
+  // Step toggles
+  function toggleStep(id) {
+    const el = document.getElementById(id);
+    el.classList.toggle('hidden');
+    renderAllMarkdown();
+  }
+
+  // Auto-refresh if running
+  if (RUN_STATUS === 'running') {
+    setInterval(() => window.location.reload(), 6000);
+  }
+
+  // Chat
+  function setMessage(text) {
+    document.getElementById('chat-input').value = text;
+    showTab('chat');
+    document.getElementById('chat-input').focus();
+  }
+
+  function handleChatKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  }
+
+  async function sendChat() {
+    const input = document.getElementById('chat-input');
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+
+    const msgsEl = document.getElementById('chat-messages');
+    const typingEl = document.getElementById('typing-indicator');
+
+    // Add user bubble
+    msgsEl.insertAdjacentHTML('beforeend', `
+      <div class="flex justify-end">
+        <div class="max-w-2xl bg-indigo-900 text-indigo-100 rounded-xl px-4 py-3 text-sm">${msg}</div>
+      </div>`);
+
+    typingEl.classList.remove('hidden');
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+
+    // AI bubble
+    const aiBubble = document.createElement('div');
+    aiBubble.className = 'flex justify-start';
+    aiBubble.innerHTML = '<div class="max-w-2xl bg-gray-800 text-gray-200 rounded-xl px-4 py-3 text-sm" id="ai-stream"></div>';
+    msgsEl.appendChild(aiBubble);
+    const streamEl = document.getElementById('ai-stream');
+    let fullText = '';
+
+    try {
+      const resp = await fetch(`/agent/api/runs/${RUN_ID}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg }),
+      });
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      typingEl.classList.add('hidden');
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        for (const line of chunk.split('\n')) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.token) {
+                fullText += data.token;
+                streamEl.innerHTML = marked.parse(fullText);
+                streamEl.classList.add('prose-dark');
+              }
+            } catch (_) {}
+          }
+        }
+        msgsEl.scrollTop = msgsEl.scrollHeight;
+      }
+    } catch (e) {
+      typingEl.classList.add('hidden');
+      streamEl.textContent = 'Error: ' + e.message;
+    }
+  }
+
+  // Scroll chat to bottom on load
+  const chatEl = document.getElementById('chat-messages');
+  if (chatEl) chatEl.scrollTop = chatEl.scrollHeight;
+
+  // Open first completed step
+  document.addEventListener('DOMContentLoaded', () => {
+    const firstStep = document.querySelector('[id^="step-"]');
+    if (firstStep) firstStep.classList.remove('hidden');
+  });
+</script>
+{% endblock %}

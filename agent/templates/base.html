@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}WL Marketing Agent{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <style>
+    ::-webkit-scrollbar { width:6px; height:6px; }
+    ::-webkit-scrollbar-track { background:#111827; }
+    ::-webkit-scrollbar-thumb { background:#374151; border-radius:3px; }
+    .prose-dark h1,.prose-dark h2,.prose-dark h3 { color:#f9fafb; font-weight:700; margin:1rem 0 .5rem; }
+    .prose-dark h2 { font-size:1.1rem; border-bottom:1px solid #374151; padding-bottom:.3rem; }
+    .prose-dark h3 { font-size:1rem; color:#d1d5db; }
+    .prose-dark p  { color:#d1d5db; margin:.5rem 0; line-height:1.6; }
+    .prose-dark ul,.prose-dark ol { color:#d1d5db; padding-left:1.5rem; margin:.5rem 0; }
+    .prose-dark li { margin:.25rem 0; }
+    .prose-dark table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:.8rem; }
+    .prose-dark th { background:#1f2937; color:#9ca3af; text-align:left; padding:.4rem .6rem; }
+    .prose-dark td { border-top:1px solid #374151; padding:.35rem .6rem; color:#d1d5db; }
+    .prose-dark code { background:#1f2937; color:#a5b4fc; padding:.1rem .3rem; border-radius:3px; font-size:.8rem; }
+    .prose-dark pre  { background:#111827; border:1px solid #374151; border-radius:8px; padding:.75rem; overflow-x:auto; margin:.5rem 0; }
+    .prose-dark pre code { background:none; color:#86efac; padding:0; font-size:.75rem; }
+    .prose-dark strong { color:#f9fafb; }
+    .prose-dark blockquote { border-left:3px solid #6366f1; padding-left:1rem; color:#9ca3af; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col">
+
+  <!-- Navbar -->
+  <nav class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center justify-between shrink-0">
+    <div class="flex items-center gap-6">
+      <a href="/agent/" class="flex items-center gap-2 text-white font-bold text-sm">
+        <span class="text-indigo-400 text-lg">⚡</span>
+        WL Marketing Agent
+      </a>
+      <div class="flex items-center gap-1">
+        {% for href, label, icon in [
+          ('/agent/', 'Dashboard', '📊'),
+          ('/agent/prompts', 'Prompts', '✏️'),
+          ('/agent/config', 'Config', '⚙️'),
+        ] %}
+        <a href="{{ href }}"
+           class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors
+                  {% if request.url.path == href %}bg-indigo-600 text-white{% else %}text-gray-400 hover:text-white hover:bg-gray-800{% endif %}">
+          <span>{{ icon }}</span> {{ label }}
+        </a>
+        {% endfor %}
+        <a href="http://localhost:3010" target="_blank"
+           class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
+          📈 Analytics
+        </a>
+      </div>
+    </div>
+    {% if user %}
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-gray-500">{{ user.username }}</span>
+      <a href="/agent/logout" class="text-xs text-gray-500 hover:text-gray-300">logout</a>
+    </div>
+    {% endif %}
+  </nav>
+
+  <!-- Content -->
+  <main class="flex-1 overflow-auto">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: { darkMode: true, background: '#111827', primaryColor: '#6366f1', primaryTextColor: '#f9fafb', lineColor: '#4b5563' } });
+    marked.setOptions({ breaks: true, gfm: true });
+
+    function renderMarkdown(id) {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = marked.parse(el.textContent || el.innerText);
+    }
+    function renderAllMarkdown() {
+      document.querySelectorAll('[data-markdown]').forEach(el => {
+        el.innerHTML = marked.parse(el.textContent || el.innerText);
+        el.classList.add('prose-dark');
+      });
+    }
+    document.addEventListener('DOMContentLoaded', renderAllMarkdown);
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

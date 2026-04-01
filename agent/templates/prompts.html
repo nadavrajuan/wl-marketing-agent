@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Prompts — WL Marketing Agent{% endblock %}
+
+{% block content %}
+<div class="p-6">
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-white">Prompt Editor</h1>
+    <p class="text-gray-400 text-sm mt-1">Edit the prompts that control every step of the analysis agent</p>
+  </div>
+
+  <!-- Visual Flow -->
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-6">
+    <div class="text-sm font-medium text-gray-300 mb-4">Agent Prompt Flow</div>
+    <div class="flex flex-wrap gap-3 items-start">
+
+      <!-- Context nodes -->
+      <div class="flex flex-col gap-2">
+        <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Context (injected everywhere)</div>
+        {% for name, icon in [('domain_context','🌐'), ('investigation_playbook','📋'), ('sql_reference','🗄️')] %}
+        <a href="#{{ name }}"
+           class="flex items-center gap-2 px-3 py-2 bg-blue-950 border border-blue-800 rounded-lg text-sm text-blue-300 hover:border-blue-500 transition-colors">
+          {{ icon }} {{ meta[name].display_name }}
+        </a>
+        {% endfor %}
+      </div>
+
+      <div class="text-gray-600 self-center text-2xl">→</div>
+
+      <!-- Flow nodes -->
+      <div class="flex flex-col gap-2">
+        <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Agent Flow</div>
+        {% for step, icon, sys_name, hum_name in [
+          ('PLAN', '📋', 'plan_system', 'plan_human'),
+          ('GENERATE QUERY', '⚡', 'query_system', 'query_human'),
+          ('ANALYZE', '🧠', 'analyze_system', 'analyze_human'),
+          ('REPORT', '📊', 'report_system', 'report_human'),
+        ] %}
+        <div class="flex items-center gap-2 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg">
+          <span class="text-white text-sm font-medium">{{ icon }} {{ step }}</span>
+          <div class="flex gap-1">
+            <a href="#{{ sys_name }}" class="text-xs text-indigo-400 hover:underline">sys</a>
+            <a href="#{{ hum_name }}" class="text-xs text-indigo-400 hover:underline">human</a>
+          </div>
+          {% if not loop.last %}
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Variable legend -->
+    <div class="mt-4 pt-4 border-t border-gray-800 flex flex-wrap gap-2 items-center">
+      <span class="text-xs text-gray-500">Variables:</span>
+      <span class="px-2 py-0.5 rounded text-xs bg-blue-900/60 text-blue-300">🕐 runtime</span>
+      <span class="px-2 py-0.5 rounded text-xs bg-purple-900/60 text-purple-300">🔄 state</span>
+      <span class="px-2 py-0.5 rounded text-xs bg-green-900/60 text-green-300">🔗 prompt ref</span>
+    </div>
+  </div>
+
+  <!-- Individual editors -->
+  <div id="save-status" class="hidden fixed top-4 right-4 bg-emerald-800 text-emerald-100 px-4 py-2 rounded-lg text-sm z-50 shadow-lg">
+    ✓ Saved
+  </div>
+
+  {% for name, content in prompts.items() %}
+  <div id="{{ name }}" class="bg-gray-900 border border-gray-800 rounded-xl mb-4 overflow-hidden scroll-mt-20">
+    <div class="flex items-start justify-between px-5 py-4 border-b border-gray-800">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="font-medium text-white">{{ meta[name].display_name }}</span>
+          <span class="font-mono text-xs text-gray-500">{{ name }}</span>
+          {% if name in ['domain_context','investigation_playbook','sql_reference'] %}
+          <span class="px-2 py-0.5 bg-blue-950 text-blue-400 rounded text-xs">context</span>
+          {% elif name.endswith('_system') %}
+          <span class="px-2 py-0.5 bg-purple-950 text-purple-400 rounded text-xs">system</span>
+          {% else %}
+          <span class="px-2 py-0.5 bg-gray-700 text-gray-400 rounded text-xs">human</span>
+          {% endif %}
+        </div>
+        <div class="text-xs text-gray-500 mt-0.5">{{ meta[name].description }}</div>
+      </div>
+      <button onclick="savePrompt('{{ name }}')"
+              class="text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg transition-colors shrink-0 ml-4">
+        Save
+      </button>
+    </div>
+    <div class="p-5">
+      <!-- Variable chips (parsed from content) -->
+      <div id="vars-{{ name }}" class="flex flex-wrap gap-1 mb-3 min-h-[24px]"></div>
+      <textarea
+        id="prompt-{{ name }}"
+        rows="12"
+        oninput="detectVars('{{ name }}')"
+        class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-y"
+      >{{ content }}</textarea>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const RUNTIME_VARS  = new Set(['domain_context','investigation_playbook','sql_reference','goal','schema_info','sample_data']);
+const STATE_VARS    = new Set(['investigation_plan','queries_executed','findings','current_step_name','current_query','current_result','current_thought']);
+const PROMPT_NAMES  = {{ prompts.keys() | list | tojson }};
+
+function detectVars(name) {
+  const text = document.getElementById(`prompt-${name}`).value;
+  const matches = [...new Set(text.match(/\{(\w+)\}/g) || [])].map(m => m.slice(1,-1));
+  const container = document.getElementById(`vars-${name}`);
+  container.innerHTML = matches.map(v => {
+    let cls = 'bg-gray-700/50 text-gray-400';
+    let prefix = '';
+    if (RUNTIME_VARS.has(v))  { cls = 'bg-blue-900/60 text-blue-300'; prefix = '🕐 '; }
+    else if (STATE_VARS.has(v)) { cls = 'bg-purple-900/60 text-purple-300'; prefix = '🔄 '; }
+    else if (PROMPT_NAMES.includes(v)) { cls = 'bg-green-900/60 text-green-300'; prefix = '🔗 '; }
+    return `<span class="px-2 py-0.5 rounded text-xs ${cls}">${prefix}{${v}}</span>`;
+  }).join('');
+}
+
+async function savePrompt(name) {
+  const content = document.getElementById(`prompt-${name}`).value;
+  const fd = new FormData();
+  fd.append('content', content);
+  await fetch(`/agent/prompts/${name}`, { method: 'POST', body: fd });
+  const s = document.getElementById('save-status');
+  s.classList.remove('hidden');
+  setTimeout(() => s.classList.add('hidden'), 2000);
+}
+
+// Init variable detection on load
+document.addEventListener('DOMContentLoaded', () => {
+  {{ prompts.keys() | list | tojson }}.forEach(name => detectVars(name));
+  // Jump to anchor
+  if (location.hash) {
+    const el = document.querySelector(location.hash);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+});
+</script>
+{% endblock %}

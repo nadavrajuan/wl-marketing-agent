@@ -1,0 +1,395 @@
+"""
+WL Marketing Agent — FastAPI Web Server
+Adapted from Codere AI architecture.
+"""
+import json
+import os
+import threading
+import time
+import uuid
+from datetime import datetime
+from typing import Optional
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI, Request, Form, Depends, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
+
+from sqlalchemy.orm import Session
+
+from database import (
+    init_db, SessionLocal, get_db,
+    Run, RunStep, Prompt, AppConfig, RunChatMessage, User,
+    get_config, set_config, get_prompt, authenticate, update_run, save_step,
+    DEFAULT_PROMPTS,
+)
+from db_client import get_quick_stats
+from llm_factory import create_llm
+
+app = FastAPI(title="WL Marketing Agent")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET", "wl-marketing-secret"),
+    max_age=86400,
+)
+
+templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
+
+# ─── Auth helpers ─────────────────────────────────────────────────────────────
+
+def get_current_user(request: Request):
+    return request.session.get("user")
+
+def require_auth(request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=303, headers={"Location": "/agent/login"})
+    return user
+
+
+# ─── Startup ──────────────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+def startup():
+    init_db()
+
+
+# ─── Auth routes ──────────────────────────────────────────────────────────────
+
+@app.get("/agent/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    if request.session.get("user"):
+        return RedirectResponse("/agent/", status_code=302)
+    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+
+@app.post("/agent/login", response_class=HTMLResponse)
+async def login_post(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = authenticate(db, username, password)
+    if user:
+        request.session["user"] = {"username": user.username, "is_admin": user.is_admin}
+        return RedirectResponse("/agent/", status_code=302)
+    return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid credentials"})
+
+@app.get("/agent/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/agent/login", status_code=302)
+
+
+# ─── Dashboard ────────────────────────────────────────────────────────────────
+
+@app.get("/agent/", response_class=HTMLResponse)
+async def dashboard(request: Request, db: Session = Depends(get_db)):
+    user = require_auth(request)
+    runs = db.query(Run).order_by(Run.created_at.desc()).limit(30).all()
+
+    # Stats
+    total  = db.query(Run).count()
+    done   = db.query(Run).filter_by(status="completed").count()
+    failed = db.query(Run).filter_by(status="failed").count()
+    running = db.query(Run).filter_by(status="running").count()
+
+    # DB quick stats
+    try:
+        db_stats = get_quick_stats()
+    except Exception:
+        db_stats = {}
+
+    return templates.TemplateResponse("dashboard.html", {
+        "request": request,
+        "user": user,
+        "runs": runs,
+        "total_runs": total,
+        "completed_runs": done,
+        "failed_runs": failed,
+        "running_runs": running,
+        "db_stats": db_stats,
+    })
+
+
+# ─── Run Detail ───────────────────────────────────────────────────────────────
+
+@app.get("/agent/runs/{run_id}", response_class=HTMLResponse)
+async def run_detail(request: Request, run_id: str, db: Session = Depends(get_db)):
+    require_auth(request)
+    run = db.query(Run).filter_by(run_id=run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    steps = db.query(RunStep).filter_by(run_id=run_id).order_by(RunStep.step_number).all()
+    chat  = db.query(RunChatMessage).filter_by(run_id=run_id).order_by(RunChatMessage.created_at).all()
+
+    return templates.TemplateResponse("run_detail.html", {
+        "request": request,
+        "run": run,
+        "steps": steps,
+        "chat_messages": chat,
+        "insights": json.loads(run.insights or "[]"),
+    })
+
+
+# ─── Prompts ──────────────────────────────────────────────────────────────────
+
+@app.get("/agent/prompts", response_class=HTMLResponse)
+async def prompts_page(request: Request, db: Session = Depends(get_db)):
+    require_auth(request)
+    prompts = {k: get_prompt(db, k) for k in DEFAULT_PROMPTS}
+    meta    = {k: {"display_name": v["display_name"], "description": v["description"]}
+               for k, v in DEFAULT_PROMPTS.items()}
+    return templates.TemplateResponse("prompts.html", {
+        "request": request,
+        "prompts": prompts,
+        "meta": meta,
+    })
+
+@app.post("/agent/prompts/{name}")
+async def save_prompt(name: str, request: Request, db: Session = Depends(get_db)):
+    require_auth(request)
+    if name not in DEFAULT_PROMPTS:
+        raise HTTPException(status_code=400, detail="Unknown prompt")
+    form = await request.form()
+    content = form.get("content", "")
+    row = db.query(Prompt).filter_by(name=name).first()
+    if row:
+        row.content    = content
+        row.updated_at = datetime.utcnow()
+    else:
+        db.add(Prompt(name=name, display_name=DEFAULT_PROMPTS[name]["display_name"],
+                      description=DEFAULT_PROMPTS[name]["description"], content=content))
+    db.commit()
+    return JSONResponse({"ok": True})
+
+
+# ─── Config ───────────────────────────────────────────────────────────────────
+
+@app.get("/agent/config", response_class=HTMLResponse)
+async def config_page(request: Request, db: Session = Depends(get_db)):
+    require_auth(request)
+    cfg = {
+        "max_iterations":  get_config(db, "max_iterations", "6"),
+        "openai_model":    get_config(db, "openai_model", "gpt-4o"),
+        "email_recipients":get_config(db, "email_recipients", ""),
+    }
+    return templates.TemplateResponse("config.html", {"request": request, "cfg": cfg})
+
+@app.post("/agent/config")
+async def save_config(
+    request: Request,
+    max_iterations: str  = Form("6"),
+    openai_model: str    = Form("gpt-4o"),
+    email_recipients: str= Form(""),
+    db: Session          = Depends(get_db),
+):
+    require_auth(request)
+    set_config(db, "max_iterations",   max_iterations)
+    set_config(db, "openai_model",     openai_model)
+    set_config(db, "email_recipients", email_recipients)
+    return RedirectResponse("/agent/config?saved=1", status_code=302)
+
+
+# ─── API — Trigger Run ────────────────────────────────────────────────────────
+
+@app.post("/agent/api/run")
+async def api_trigger_run(request: Request, db: Session = Depends(get_db)):
+    require_auth(request)
+    body = await request.json()
+    goal  = body.get("goal", "Find optimization opportunities — maximize purchases, minimize cost")
+    model = body.get("model") or get_config(db, "openai_model", "gpt-4o")
+    max_iter = int(get_config(db, "max_iterations", "6"))
+
+    run_id = str(uuid.uuid4())[:8]
+    db.add(Run(
+        run_id=run_id,
+        status="running",
+        goal=goal,
+        model=model,
+        created_at=datetime.utcnow(),
+    ))
+    db.commit()
+
+    def run_in_background():
+        from agent import run_analysis
+        agent_db = SessionLocal()
+        start = time.time()
+
+        def step_callback(run_id, iteration, step_name, thought, sql, result, rows):
+            try:
+                step_num = agent_db.query(RunStep).filter_by(run_id=run_id).count() + 1
+                save_step(agent_db, run_id, step_num, step_name,
+                          thought=thought, sql=sql, result_summary=result[:3000] if result else "", rows_count=rows)
+            except Exception as e:
+                print(f"[step_callback error] {e}")
+
+        try:
+            final_state = run_analysis(
+                run_id=run_id,
+                goal=goal,
+                model=model,
+                max_iterations=max_iter,
+                db_session=agent_db,
+                step_callback=step_callback,
+            )
+            duration = time.time() - start
+            update_run(agent_db, run_id,
+                status="completed",
+                final_report=final_state.get("final_report", ""),
+                public_report=final_state.get("public_report", ""),
+                error_log=json.dumps(final_state.get("error_log", [])),
+                insights=json.dumps(final_state.get("findings", [])[-5:]),
+                iteration_count=final_state.get("iteration", 0),
+                duration_seconds=round(duration, 1),
+            )
+        except Exception as e:
+            import traceback
+            err = traceback.format_exc()
+            print(f"[agent error] {err}")
+            update_run(agent_db, run_id,
+                status="failed",
+                error_log=json.dumps([str(e)]),
+                duration_seconds=round(time.time() - start, 1),
+            )
+        finally:
+            agent_db.close()
+
+    t = threading.Thread(target=run_in_background, daemon=True)
+    t.start()
+
+    return JSONResponse({"run_id": run_id, "status": "started"})
+
+
+# ─── API — Runs List / Detail ─────────────────────────────────────────────────
+
+@app.get("/agent/api/runs")
+async def api_runs(request: Request, db: Session = Depends(get_db)):
+    require_auth(request)
+    runs = db.query(Run).order_by(Run.created_at.desc()).limit(30).all()
+    return JSONResponse([{
+        "run_id":        r.run_id,
+        "status":        r.status,
+        "created_at":    r.created_at.isoformat() if r.created_at else None,
+        "goal":          r.goal,
+        "model":         r.model,
+        "iteration_count": r.iteration_count,
+        "duration_seconds": r.duration_seconds,
+    } for r in runs])
+
+@app.get("/agent/api/runs/{run_id}")
+async def api_run_detail(run_id: str, request: Request, db: Session = Depends(get_db)):
+    require_auth(request)
+    run = db.query(Run).filter_by(run_id=run_id).first()
+    if not run:
+        raise HTTPException(status_code=404)
+    steps = db.query(RunStep).filter_by(run_id=run_id).order_by(RunStep.step_number).all()
+    return JSONResponse({
+        "run_id":        run.run_id,
+        "status":        run.status,
+        "goal":          run.goal,
+        "model":         run.model,
+        "iteration_count": run.iteration_count,
+        "duration_seconds": run.duration_seconds,
+        "final_report":  run.final_report,
+        "public_report": run.public_report,
+        "error_log":     json.loads(run.error_log or "[]"),
+        "steps": [{
+            "step_number":    s.step_number,
+            "step_name":      s.step_name,
+            "thought":        s.thought,
+            "sql":            s.sql,
+            "result_summary": s.result_summary,
+            "rows_count":     s.rows_count,
+        } for s in steps],
+    })
+
+
+# ─── API — Chat ───────────────────────────────────────────────────────────────
+
+@app.get("/agent/api/runs/{run_id}/chat")
+async def api_chat_history(run_id: str, request: Request, db: Session = Depends(get_db)):
+    require_auth(request)
+    msgs = db.query(RunChatMessage).filter_by(run_id=run_id).order_by(RunChatMessage.created_at).all()
+    return JSONResponse([{"role": m.role, "content": m.content} for m in msgs])
+
+@app.post("/agent/api/runs/{run_id}/chat")
+async def api_chat_send(run_id: str, request: Request, db: Session = Depends(get_db)):
+    require_auth(request)
+    run = db.query(Run).filter_by(run_id=run_id).first()
+    if not run:
+        raise HTTPException(status_code=404)
+    body = await request.json()
+    user_msg = body.get("message", "").strip()
+    if not user_msg:
+        raise HTTPException(status_code=400, detail="Empty message")
+
+    # Persist user message
+    db.add(RunChatMessage(run_id=run_id, role="user", content=user_msg))
+    db.commit()
+
+    # Build context from run
+    steps = db.query(RunStep).filter_by(run_id=run_id).order_by(RunStep.step_number).all()
+    step_context = "\n\n".join(
+        f"[{s.step_name}]\nThought: {s.thought or ''}\nSQL: {s.sql or ''}\nResult: {(s.result_summary or '')[:500]}"
+        for s in steps
+    )
+    history = db.query(RunChatMessage).filter_by(run_id=run_id).order_by(RunChatMessage.created_at).all()
+
+    from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
+    system_prompt = f"""You are an expert PPC marketing analyst assistant.
+You have access to a complete analysis of Weight Loss PPC campaigns (Bing + Google Ads).
+
+RUN GOAL: {run.goal}
+STATUS: {run.status}
+ITERATIONS: {run.iteration_count}
+
+INVESTIGATION STEPS:
+{step_context}
+
+FINAL REPORT SUMMARY:
+{(run.public_report or '')[:2000]}
+
+Answer questions about the analysis. When asked to run new queries, describe what you would find.
+Be specific with numbers. Keep responses focused and actionable."""
+
+    messages = [SystemMessage(content=system_prompt)]
+    for msg in history[-12:]:
+        if msg.role == "user":
+            messages.append(HumanMessage(content=msg.content))
+        else:
+            messages.append(AIMessage(content=msg.content))
+    messages.append(HumanMessage(content=user_msg))
+
+    model = get_config(db, "openai_model", "gpt-4o")
+    llm = create_llm(model=model, temperature=0.3)
+
+    async def stream_response():
+        full_response = ""
+        try:
+            for chunk in llm.stream(messages):
+                token = chunk.content
+                if token:
+                    full_response += token
+                    yield f"data: {json.dumps({'token': token})}\n\n"
+        finally:
+            # Persist assistant response
+            save_db = SessionLocal()
+            save_db.add(RunChatMessage(run_id=run_id, role="assistant", content=full_response))
+            save_db.commit()
+            save_db.close()
+            yield f"data: {json.dumps({'done': True})}\n\n"
+
+    return StreamingResponse(stream_response(), media_type="text/event-stream")
+
+
+# ─── Entrypoint ───────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app:app", host="0.0.0.0", port=8001, reload=True)

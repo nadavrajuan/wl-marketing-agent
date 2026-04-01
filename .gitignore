@@ -14,3 +14,7 @@ __pycache__/
 # Editor
 .vscode/
 .idea/
+
+# Agent
+agent/agent.db
+agent/__pycache__/
