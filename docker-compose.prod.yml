@@ -59,8 +59,8 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      AGENT_DB_URL: postgresql://${POSTGRES_USER}@postgres:5432/${POSTGRES_DB}
-      PG_DSN: postgresql://${POSTGRES_USER}@postgres:5432/${POSTGRES_DB}
+      AGENT_DB_URL: postgresql://${POSTGRES_USER}@wl-marketing-postgres:5432/${POSTGRES_DB}
+      PG_DSN: postgresql://${POSTGRES_USER}@wl-marketing-postgres:5432/${POSTGRES_DB}
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}
       ADMIN_USERNAME: ${ADMIN_USERNAME:?ADMIN_USERNAME is required}
