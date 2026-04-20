@@ -54,12 +54,14 @@ services:
     image: ghcr.io/nadavrajuan/wl-marketing-agent-agent:${IMAGE_TAG:-latest}
     container_name: wl-marketing-agent
     restart: unless-stopped
+    command: ["sh", "-lc", "sleep ${AGENT_STARTUP_DELAY:-5} && uvicorn app:app --host 0.0.0.0 --port 8003"]
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      AGENT_DB_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      PG_DSN: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AGENT_DB_URL: postgresql://${POSTGRES_USER}@postgres:5432/${POSTGRES_DB}
+      PG_DSN: postgresql://${POSTGRES_USER}@postgres:5432/${POSTGRES_DB}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}
       ADMIN_USERNAME: ${ADMIN_USERNAME:?ADMIN_USERNAME is required}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}

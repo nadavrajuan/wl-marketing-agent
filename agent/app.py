@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
 
 from database import (
     init_db, SessionLocal, get_db,
@@ -129,7 +130,26 @@ def _build_chat_fallback(run: Run, user_msg: str) -> str:
 
 @app.on_event("startup")
 def startup():
-    init_db()
+    max_attempts = int(os.getenv("DB_INIT_MAX_ATTEMPTS", "10"))
+    retry_delay_seconds = float(os.getenv("DB_INIT_RETRY_SECONDS", "3"))
+    last_error: Exception | None = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            init_db()
+            return
+        except OperationalError as exc:
+            last_error = exc
+            if attempt == max_attempts:
+                break
+            print(
+                f"[startup] database init attempt {attempt}/{max_attempts} failed: {exc}. "
+                f"Retrying in {retry_delay_seconds:.1f}s..."
+            )
+            time.sleep(retry_delay_seconds)
+
+    if last_error is not None:
+        raise last_error
 
 
 @app.get("/agent/health")
