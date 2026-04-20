@@ -84,7 +84,7 @@ export default function DailyChart() {
           stroke="#f59e0b"
           fill="#f59e0b10"
           strokeWidth={1.5}
-          name="Revenue $"
+          name="Modeled Value $"
           dot={false}
         />
       </ComposedChart>

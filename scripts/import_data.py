@@ -10,6 +10,7 @@ Usage:
 import sys
 import re
 import datetime
+import os
 from urllib.parse import urlparse, parse_qs
 
 import openpyxl
@@ -17,7 +18,7 @@ import psycopg2
 import psycopg2.extras
 
 XLSX_PATH = "WL raw.xlsx"
-DB_DSN = "host=localhost port=5434 dbname=wl_marketing user=wl_user password=wl_pass"
+DB_DSN = os.getenv("PG_DSN")
 
 
 def parse_ts(val):
@@ -119,6 +120,8 @@ def parse_url_fields(landing_page: str | None) -> dict:
 
 
 def main():
+    if not DB_DSN:
+        raise RuntimeError("PG_DSN is required to import legacy Postgres data.")
     print(f"Loading {XLSX_PATH}...")
     wb = openpyxl.load_workbook(XLSX_PATH, read_only=True, data_only=True)
     ws = wb["Sheet1"]

@@ -3,13 +3,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const nav = [
-  { href: "/", label: "Dashboard", icon: "📊" },
+  { href: "/", label: "Action Board", icon: "📊" },
+  { href: "/copy-lab", label: "Copy Lab", icon: "🧠" },
   { href: "/campaigns", label: "Campaigns", icon: "🎯" },
   { href: "/keywords", label: "Keywords", icon: "🔍" },
   { href: "/explorer", label: "Data Explorer", icon: "🗂️" },
   { href: "/segments", label: "Segments", icon: "📈" },
   { href: "/schema", label: "Data Schema", icon: "🧬" },
 ];
+
+const agentUrl = process.env.NEXT_PUBLIC_AGENT_BASE_URL || "/agent/";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -40,7 +43,7 @@ export default function Sidebar() {
       </nav>
       <div className="mt-auto px-2 pt-4 border-t border-gray-800">
         <a
-          href="http://localhost:8003/agent/"
+          href={agentUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-indigo-400 hover:text-white hover:bg-indigo-900/40 transition-colors"

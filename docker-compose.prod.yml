@@ -1,0 +1,103 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wl-marketing-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - wl_marketing_postgres:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default
+
+  app:
+    image: ghcr.io/nadavrajuan/wl-marketing-agent-app:${IMAGE_TAG:-latest}
+    container_name: wl-marketing-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      BIGQUERY_PROJECT_ID: ${BIGQUERY_PROJECT_ID:?BIGQUERY_PROJECT_ID is required}
+      BIGQUERY_DATASET: ${BIGQUERY_DATASET:?BIGQUERY_DATASET is required}
+      BIGQUERY_SERVICE_ACCOUNT_JSON: ${BIGQUERY_SERVICE_ACCOUNT_JSON:-}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/run/secrets/bigquery-service-account.json}
+      NEXT_PUBLIC_AGENT_BASE_URL: /agent/
+    volumes:
+      - ./secrets/bigquery-service-account.json:/run/secrets/bigquery-service-account.json:ro
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      - traefik.http.routers.wl-app.rule=Host(`wl.rajuan.app`)
+      - traefik.http.routers.wl-app.priority=10
+      - traefik.http.routers.wl-app.entrypoints=websecure
+      - traefik.http.routers.wl-app.tls=true
+      - traefik.http.routers.wl-app.tls.certresolver=letsencrypt
+      - traefik.http.routers.wl-app.middlewares=wl-app-auth
+      - traefik.http.middlewares.wl-app-auth.basicauth.users=${TRAEFIK_BASIC_AUTH_USERS:?TRAEFIK_BASIC_AUTH_USERS is required}
+      - traefik.http.services.wl-app.loadbalancer.server.port=3000
+    networks:
+      - default
+      - traefik-public
+
+  agent:
+    image: ghcr.io/nadavrajuan/wl-marketing-agent-agent:${IMAGE_TAG:-latest}
+    container_name: wl-marketing-agent
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_DB_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PG_DSN: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?ADMIN_USERNAME is required}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      BIGQUERY_PROJECT_ID: ${BIGQUERY_PROJECT_ID:?BIGQUERY_PROJECT_ID is required}
+      BIGQUERY_DATASET: ${BIGQUERY_DATASET:?BIGQUERY_DATASET is required}
+      BIGQUERY_SERVICE_ACCOUNT_JSON: ${BIGQUERY_SERVICE_ACCOUNT_JSON:-}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/run/secrets/bigquery-service-account.json}
+      INGEST_API_TOKEN: ${INGEST_API_TOKEN:?INGEST_API_TOKEN is required}
+      WEIGHT_AGENT_ANALYTICS_URL: http://app:3000
+      PUBLIC_ANALYTICS_URL: /
+    volumes:
+      - ./secrets/bigquery-service-account.json:/run/secrets/bigquery-service-account.json:ro
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      - traefik.http.routers.wl-agent.rule=Host(`wl.rajuan.app`) && PathPrefix(`/agent`)
+      - traefik.http.routers.wl-agent.priority=100
+      - traefik.http.routers.wl-agent.entrypoints=websecure
+      - traefik.http.routers.wl-agent.tls=true
+      - traefik.http.routers.wl-agent.tls.certresolver=letsencrypt
+      - traefik.http.routers.wl-agent.middlewares=wl-agent-auth
+      - traefik.http.middlewares.wl-agent-auth.basicauth.users=${TRAEFIK_BASIC_AUTH_USERS:?TRAEFIK_BASIC_AUTH_USERS is required}
+      - traefik.http.services.wl-agent.loadbalancer.server.port=8003
+      - traefik.http.routers.wl-ingest.rule=Host(`wl.rajuan.app`) && (PathPrefix(`/agent/internal/ingest`) || Path(`/agent/internal/health`))
+      - traefik.http.routers.wl-ingest.priority=200
+      - traefik.http.routers.wl-ingest.entrypoints=websecure
+      - traefik.http.routers.wl-ingest.tls=true
+      - traefik.http.routers.wl-ingest.tls.certresolver=letsencrypt
+      - traefik.http.routers.wl-ingest.service=wl-agent
+    networks:
+      - default
+      - traefik-public
+
+volumes:
+  wl_marketing_postgres:
+
+networks:
+  traefik-public:
+    external: true

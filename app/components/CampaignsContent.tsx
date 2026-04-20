@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import FilterBar from "./FilterBar";
 
 interface Campaign {
@@ -14,6 +15,8 @@ interface Campaign {
   avg_order_value: string;
   adgroup_count: string;
   keyword_count: string;
+  spend: string;
+  cost_per_purchase: string | null;
   quiz_completion_rate: string | null;
   purchase_rate: string | null;
 }
@@ -31,6 +34,7 @@ const FILTERS = [
 ];
 
 export default function CampaignsContent() {
+  const searchParams = useSearchParams();
   const [data, setData] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<keyof Campaign>("total_events");
@@ -38,10 +42,11 @@ export default function CampaignsContent() {
 
   useEffect(() => {
     setLoading(true);
-    fetch("/api/campaigns")
+    const params = searchParams.toString();
+    fetch(`/api/campaigns${params ? `?${params}` : ""}`)
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); });
-  }, []);
+  }, [searchParams]);
 
   const sorted = [...data].sort((a, b) => {
     const av = Number(a[sortKey]) || a[sortKey] || "";
@@ -87,6 +92,8 @@ export default function CampaignsContent() {
                 {th("Quiz Starts", "quiz_starts")}
                 {th("Completions", "quiz_completes")}
                 {th("Purchases", "purchases")}
+                {th("Spend", "spend")}
+                {th("CPA", "cost_per_purchase")}
                 {th("Revenue", "revenue")}
                 {th("Avg Order", "avg_order_value")}
                 {th("Quiz CVR%", "quiz_completion_rate")}
@@ -113,6 +120,10 @@ export default function CampaignsContent() {
                   <td className="py-2 px-3 text-right text-gray-400">{Number(c.quiz_starts).toLocaleString()}</td>
                   <td className="py-2 px-3 text-right text-gray-400">{Number(c.quiz_completes).toLocaleString()}</td>
                   <td className="py-2 px-3 text-right text-emerald-400 font-medium">{Number(c.purchases).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right text-gray-300">${Number(c.spend || 0).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right text-cyan-400">
+                    {c.cost_per_purchase ? `$${Number(c.cost_per_purchase).toFixed(0)}` : "—"}
+                  </td>
                   <td className="py-2 px-3 text-right text-yellow-400">${Number(c.revenue).toLocaleString()}</td>
                   <td className="py-2 px-3 text-right text-gray-400">${Number(c.avg_order_value).toFixed(0)}</td>
                   <td className="py-2 px-3 text-right text-purple-400">{c.quiz_completion_rate ? `${c.quiz_completion_rate}%` : "—"}</td>

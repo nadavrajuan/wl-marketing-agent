@@ -349,29 +349,16 @@ def run_analysis(
     db_session=None,
     step_callback=None,
 ):
-    graph = build_graph(db_session=db_session)
+    try:
+        from purchase_flow import run_purchase_flow
+    except ModuleNotFoundError:  # pragma: no cover - fallback for package-style imports
+        from .purchase_flow import run_purchase_flow
 
-    initial_state: AgentState = {
-        "run_id":             run_id,
-        "goal":               goal,
-        "model":              model or os.getenv("OPENAI_MODEL", "gpt-4o"),
-        "schema_info":        "",
-        "sample_data":        "",
-        "investigation_plan": "",
-        "queries_executed":   [],
-        "findings":           [],
-        "current_step_name":  "",
-        "current_query":      "",
-        "current_result":     "",
-        "current_thought":    "",
-        "iteration":          0,
-        "max_iterations":     max_iterations,
-        "done":               False,
-        "final_report":       "",
-        "public_report":      "",
-        "error_log":          [],
-        "_step_callback":     step_callback,
-    }
-
-    final_state = graph.invoke(initial_state)
-    return final_state
+    return run_purchase_flow(
+        run_id=run_id,
+        goal=goal,
+        model=model or os.getenv("OPENAI_MODEL", "gpt-4o"),
+        max_iterations=max_iterations,
+        db_session=db_session,
+        step_callback=step_callback,
+    )

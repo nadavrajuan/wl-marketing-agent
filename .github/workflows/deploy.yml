@@ -1,0 +1,148 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  APP_IMAGE: ghcr.io/${{ github.repository_owner }}/wl-marketing-agent-app
+  AGENT_IMAGE: ghcr.io/${{ github.repository_owner }}/wl-marketing-agent-agent
+  REMOTE_DIR: /home/ubuntu/wl-marketing-agent
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install app deps
+        working-directory: app
+        run: npm ci
+
+      - name: Lint app
+        working-directory: app
+        run: npm run lint
+
+      - name: Build app
+        working-directory: app
+        run: npm run build
+
+      - name: Install agent deps
+        working-directory: agent
+        run: pip install -r requirements.txt
+
+      - name: Compile Python sources
+        run: python -m py_compile agent/*.py scripts/*.py
+
+  build-and-push:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push app image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          push: true
+          tags: |
+            ${{ env.APP_IMAGE }}:latest
+            ${{ env.APP_IMAGE }}:${{ github.sha }}
+
+      - name: Build and push agent image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./agent
+          file: ./agent/Dockerfile
+          push: true
+          tags: |
+            ${{ env.AGENT_IMAGE }}:latest
+            ${{ env.AGENT_IMAGE }}:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure remote directories
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            mkdir -p ${{ env.REMOTE_DIR }}/db
+            mkdir -p ${{ env.REMOTE_DIR }}/secrets
+
+      - name: Copy compose and init assets
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "docker-compose.prod.yml,db/init.sql"
+          target: ${{ env.REMOTE_DIR }}
+          strip_components: 0
+
+      - name: Deploy stack
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd ${{ env.REMOTE_DIR }}
+            cat > .env <<'EOF'
+            IMAGE_TAG=${{ github.sha }}
+            POSTGRES_DB=wl_marketing
+            POSTGRES_USER=wl_agent
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            SESSION_SECRET=${{ secrets.SESSION_SECRET }}
+            ADMIN_USERNAME=${{ secrets.ADMIN_USERNAME }}
+            ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            OPENAI_MODEL=gpt-4o
+            BIGQUERY_PROJECT_ID=${{ secrets.BIGQUERY_PROJECT_ID }}
+            BIGQUERY_DATASET=${{ secrets.BIGQUERY_DATASET }}
+            GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/bigquery-service-account.json
+            INGEST_API_TOKEN=${{ secrets.INGEST_API_TOKEN }}
+            TRAEFIK_BASIC_AUTH_USERS=${{ secrets.TRAEFIK_BASIC_AUTH_USERS }}
+            EOF
+            cat > secrets/bigquery-service-account.json <<'EOF'
+            ${{ secrets.BIGQUERY_SERVICE_ACCOUNT_JSON }}
+            EOF
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -af --filter "until=168h"

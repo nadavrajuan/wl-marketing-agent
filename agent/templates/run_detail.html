@@ -72,7 +72,7 @@
           {% endif %}
           {% if step.sql %}
           <div class="px-4 pb-3">
-            <div class="text-xs text-gray-500 uppercase mb-2">SQL Query</div>
+            <div class="text-xs text-gray-500 uppercase mb-2">Source</div>
             <pre class="bg-gray-950 border border-gray-800 rounded-lg p-3 overflow-x-auto text-xs text-green-300 font-mono">{{ step.sql }}</pre>
           </div>
           {% endif %}
@@ -105,14 +105,12 @@
         <div class="text-sm font-medium text-gray-300 mb-4">Agent Graph</div>
         <div class="mermaid">
 flowchart TD
-    A([🔍 DISCOVER<br/>Fetch schema & sample data]) --> B
-    B([📋 PLAN<br/>Build investigation strategy]) --> C
-    C([⚡ GENERATE QUERY<br/>Write PostgreSQL SQL]) --> D
-    D([▶️ EXECUTE<br/>Run query safely]) --> E
-    E([🧠 ANALYZE<br/>Extract insights]) --> F{Done?}
-    F -- No, continue --> C
-    F -- Yes --> G
-    G([📊 REPORT<br/>Generate dual reports]) --> H([✅ END])
+    A([MEASUREMENT TRUTH]) --> B([KEYWORD ECONOMICS])
+    B --> C([LANDING PAGE MISMATCH])
+    C --> D([COPY INTELLIGENCE])
+    D --> E([PARTNER RISK AND MARKET])
+    E --> F([REPORT])
+    F --> G([END])
         </div>
       </div>
       <!-- Node descriptions + prompt links -->
@@ -120,12 +118,12 @@ flowchart TD
         <div class="text-sm font-medium text-gray-300 mb-4">Nodes & Prompts</div>
         <div class="space-y-3">
           {% for node, icon, desc, prompts_list in [
-            ('DISCOVER', '🔍', 'Fetches live schema & sample rows from PostgreSQL. No LLM call.', []),
-            ('PLAN', '📋', 'Builds a numbered investigation plan using the Investigation Playbook.', ['plan_system', 'plan_human']),
-            ('GENERATE QUERY', '⚡', 'Writes the next PostgreSQL SQL query for the current step.', ['query_system', 'query_human']),
-            ('EXECUTE', '▶️', 'Runs the SQL read-only against PostgreSQL. Validates safety.', []),
-            ('ANALYZE', '🧠', 'Interprets query results and extracts actionable findings.', ['analyze_system', 'analyze_human']),
-            ('REPORT', '📊', 'Generates Technical Report + Executive Report from all findings.', ['report_system', 'report_human']),
+            ('MEASUREMENT TRUTH', '📏', 'Loads the live BigQuery-backed purchase baseline, join coverage, and conversion truth.', []),
+            ('KEYWORD ECONOMICS', '💰', 'Ranks winning keywords and waste keywords by estimated spend, purchase profit, and break-even loss.', []),
+            ('LANDING PAGE MISMATCH', '🧭', 'Finds landing pages that absorb intent but fail to turn it into purchases.', []),
+            ('COPY INTELLIGENCE', '✍️', 'Translates keyword and theme performance into a short list of copy actions.', []),
+            ('PARTNER RISK AND MARKET', '🌐', 'Blends partner risk from internal data with public site snapshots and market signals.', []),
+            ('REPORT', '📊', 'Builds the final technical and executive reports from the deterministic flow.', []),
           ] %}
           <div class="bg-gray-800 rounded-lg p-3">
             <div class="flex items-center justify-between mb-1">
@@ -144,16 +142,8 @@ flowchart TD
           </div>
           {% endfor %}
         </div>
-        <div class="mt-4 pt-4 border-t border-gray-700">
-          <div class="text-xs text-gray-500 mb-2">Context injected into every LLM call:</div>
-          <div class="flex flex-wrap gap-2">
-            {% for p in ['domain_context', 'investigation_playbook', 'sql_reference'] %}
-            <a href="/agent/prompts#{{ p }}"
-               class="px-2 py-1 bg-gray-700 text-indigo-300 rounded text-xs hover:bg-gray-600 transition-colors">
-              {{ p.replace('_', ' ') }}
-            </a>
-            {% endfor %}
-          </div>
+        <div class="mt-4 pt-4 border-t border-gray-700 text-xs text-gray-500">
+          The current run path is deterministic and uses curated analytics endpoints instead of raw SQL generation.
         </div>
       </div>
     </div>
@@ -174,8 +164,8 @@ flowchart TD
   <!-- ── Executive Report Tab ── -->
   <div id="tab-executive" class="tab-content hidden">
     {% if run.public_report %}
-    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
-      <div data-markdown class="prose-dark">{{ run.public_report }}</div>
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-4xl">
+      <div id="exec-report-rendered" class="prose-dark"></div>
     </div>
     {% elif run.status == 'running' %}
     <div class="text-center py-16 text-gray-400">Report will appear when the analysis completes.</div>
@@ -187,8 +177,8 @@ flowchart TD
   <!-- ── Technical Report Tab ── -->
   <div id="tab-technical" class="tab-content hidden">
     {% if run.final_report %}
-    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
-      <div data-markdown class="prose-dark">{{ run.final_report }}</div>
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-4xl">
+      <div id="tech-report-rendered" class="prose-dark"></div>
     </div>
     {% elif run.status == 'running' %}
     <div class="text-center py-16 text-gray-400">Report will appear when the analysis completes.</div>
@@ -219,7 +209,7 @@ flowchart TD
           'What are the top 3 keywords to scale?',
           'Which landing page variant performs best?',
           'How does Bing compare to Google efficiency?',
-          'What is the biggest funnel drop-off point?',
+          'What is the biggest source of wasted spend?',
         ] %}
         <button onclick="setMessage(this.textContent)"
                 class="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded hover:bg-gray-700 transition-colors">
@@ -265,6 +255,17 @@ flowchart TD
 
 {% block scripts %}
 <script>
+  // Raw markdown injected safely via tojson (no HTML-entity issues)
+  const EXEC_REPORT_MD = {{ run.public_report | tojson if run.public_report else '""' }};
+  const TECH_REPORT_MD = {{ run.final_report | tojson if run.final_report else '""' }};
+
+  function renderReports() {
+    const execEl = document.getElementById('exec-report-rendered');
+    const techEl = document.getElementById('tech-report-rendered');
+    if (execEl && EXEC_REPORT_MD) execEl.innerHTML = marked.parse(EXEC_REPORT_MD);
+    if (techEl && TECH_REPORT_MD) techEl.innerHTML = marked.parse(TECH_REPORT_MD);
+  }
+
   const RUN_ID = '{{ run.run_id }}';
   const RUN_STATUS = '{{ run.status }}';
 
@@ -276,6 +277,8 @@ flowchart TD
     const btn = document.getElementById('tab-btn-' + id);
     btn.classList.add('bg-gray-800','text-white');
     btn.classList.remove('text-gray-400');
+    if (id === 'executive' || id === 'technical') renderReports();
+    if (id === 'flow') mermaid.run();
   }
 
   // Step toggles
@@ -365,8 +368,12 @@ flowchart TD
   const chatEl = document.getElementById('chat-messages');
   if (chatEl) chatEl.scrollTop = chatEl.scrollHeight;
 
-  // Open first completed step
   document.addEventListener('DOMContentLoaded', () => {
+    // Render reports immediately (tabs may be opened any time)
+    renderReports();
+    // Re-render any data-markdown elements in timeline
+    renderAllMarkdown();
+    // Open first step
     const firstStep = document.querySelector('[id^="step-"]');
     if (firstStep) firstStep.classList.remove('hidden');
   });

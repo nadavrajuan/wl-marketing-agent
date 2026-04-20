@@ -7,9 +7,20 @@ app/.env.local
 __pycache__/
 *.py[cod]
 .venv/
+.env
+.env.*
+*.env
+*.dump
+*.sql.gz
+.local/
+!.env.example
+!app/.env.example
+!agent/.env.example
 
 # OS
 .DS_Store
+weightagent-f7946872ebb1.json
+*.service-account.json
 
 # Editor
 .vscode/

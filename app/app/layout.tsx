@@ -8,6 +8,9 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "WL Marketing Agent",
   description: "PPC Marketing Analytics & Optimization — Weight Loss Campaigns",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

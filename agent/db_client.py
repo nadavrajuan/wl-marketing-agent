@@ -9,7 +9,7 @@ from typing import Any
 import psycopg2
 import psycopg2.extras
 
-DSN = os.getenv("PG_DSN", "postgresql://wl_user:wl_pass@localhost:5434/wl_marketing")
+DSN = os.getenv("PG_DSN")
 
 _MUTATING = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|GRANT|REVOKE|COPY)\b",
@@ -20,6 +20,8 @@ MAX_ROWS = 500
 
 
 def _conn():
+    if not DSN:
+        raise RuntimeError("PG_DSN is required for PostgreSQL queries")
     return psycopg2.connect(DSN)
 
 

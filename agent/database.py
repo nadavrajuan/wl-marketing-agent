@@ -15,7 +15,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 
-DATABASE_URL = os.getenv("AGENT_DB_URL", "sqlite:///./agent.db")
+try:
+    from settings import require_env
+except ModuleNotFoundError:  # pragma: no cover
+    from .settings import require_env
+
+DATABASE_URL = require_env("AGENT_DB_URL")
 
 engine = create_engine(
     DATABASE_URL,
@@ -115,8 +120,8 @@ def _hash(pw: str) -> str:
 
 
 def _seed_admin(db: Session):
-    username = os.getenv("ADMIN_USERNAME", "admin")
-    password = os.getenv("ADMIN_PASSWORD", "admin123")
+    username = require_env("ADMIN_USERNAME")
+    password = require_env("ADMIN_PASSWORD")
     if not db.query(User).filter_by(username=username).first():
         db.add(User(username=username, password_hash=_hash(password), is_admin=True))
         db.commit()

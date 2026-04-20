@@ -29,7 +29,7 @@ const GROUP_OPTIONS = [
 const COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#84cc16","#ec4899","#14b8a6"];
 
 const LABEL_MAPS: Record<string, Record<string, string>> = {
-  device: { c: "Desktop", m: "Mobile", t: "Tablet" },
+  device: { c: "Desktop", m: "Mobile", t: "Tablet", desktop: "Desktop", mobile: "Mobile", tablet: "Tablet" },
   match_type: { e: "Exact", p: "Phrase", b: "Broad" },
   network: { o: "Bing Search", g: "Google Search", s: "Syndication", a: "App" },
 };
@@ -40,7 +40,6 @@ export default function SegmentsContent() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
     fetch(`/api/segments?group_by=${groupBy}`)
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); });
@@ -68,7 +67,10 @@ export default function SegmentsContent() {
         <select
           className="bg-gray-800 border border-gray-700 text-sm text-white rounded-lg px-3 py-2"
           value={groupBy}
-          onChange={(e) => setGroupBy(e.target.value)}
+          onChange={(e) => {
+            setLoading(true);
+            setGroupBy(e.target.value);
+          }}
         >
           {GROUP_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>

@@ -4,6 +4,7 @@ Adapted from Codere AI architecture.
 """
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -13,7 +14,7 @@ from typing import Optional
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, Request, Form, Depends, HTTPException
+from fastapi import FastAPI, Request, Form, Depends, Header, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -28,16 +29,24 @@ from database import (
     DEFAULT_PROMPTS,
 )
 from db_client import get_quick_stats
+from ingestion import IngestPayload, ingest_bing_ads_payload, ingest_google_ads_payload
 from llm_factory import create_llm
+from settings import require_env
 
 app = FastAPI(title="WL Marketing Agent")
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.getenv("SESSION_SECRET", "wl-marketing-secret"),
+    secret_key=require_env("SESSION_SECRET"),
     max_age=86400,
 )
 
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
+templates.env.globals["analytics_url"] = os.getenv("PUBLIC_ANALYTICS_URL", "/")
+app.mount(
+    "/agent/static",
+    StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")),
+    name="agent-static",
+)
 
 # ─── Auth helpers ─────────────────────────────────────────────────────────────
 
@@ -51,11 +60,81 @@ def require_auth(request: Request):
     return user
 
 
+def require_ingest_token(authorization: str | None = Header(default=None)) -> None:
+    expected = require_env("INGEST_API_TOKEN")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = authorization.removeprefix("Bearer ").strip()
+    if token != expected:
+        raise HTTPException(status_code=403, detail="Invalid ingest token")
+
+
+def _extract_report_section(report: str, heading: str) -> str:
+    if not report:
+        return ""
+    pattern = re.compile(
+        rf"^## {re.escape(heading)}\n(.*?)(?=^## |\Z)",
+        re.MULTILINE | re.DOTALL,
+    )
+    match = pattern.search(report)
+    return match.group(1).strip() if match else ""
+
+
+def _build_chat_fallback(run: Run, user_msg: str) -> str:
+    report = run.public_report or ""
+    question = user_msg.lower()
+
+    if any(term in question for term in ["pause", "cut", "wasting", "waste", "losing money"]):
+        section = _extract_report_section(report, "What To Cut")
+        if section:
+            return "The highest-priority cuts from this run are:\n\n" + section
+
+    if any(term in question for term in ["scale", "winner", "best keyword", "top keyword"]):
+        section = _extract_report_section(report, "What To Scale")
+        if section:
+            return "The strongest scale candidates from this run are:\n\n" + section
+
+    if "landing" in question or "page" in question:
+        section = _extract_report_section(report, "Landing Pages To Review First")
+        if section:
+            return "The first landing pages to review from this run are:\n\n" + section
+
+    if "partner" in question or "sprout" in question or "ro " in question or question.endswith("ro"):
+        section = _extract_report_section(report, "Partner Handling")
+        if section:
+            return "Partner guidance from this run:\n\n" + section
+
+    if "copy" in question or "headline" in question or "ad copy" in question or "message" in question:
+        section = _extract_report_section(report, "Copy Tests To Launch Next")
+        if section:
+            return "The next copy tests from this run are:\n\n" + section
+
+    summary = _extract_report_section(report, "Business Outcome")
+    cuts = _extract_report_section(report, "What To Cut")
+    scale = _extract_report_section(report, "What To Scale")
+
+    parts = [
+        "Live chat fell back to the stored report because the model request was unavailable.",
+    ]
+    if summary:
+        parts.append("Business outcome:\n\n" + summary)
+    if scale:
+        parts.append("What to scale:\n\n" + scale)
+    if cuts:
+        parts.append("What to cut:\n\n" + cuts)
+    return "\n\n".join(parts)
+
+
 # ─── Startup ──────────────────────────────────────────────────────────────────
 
 @app.on_event("startup")
 def startup():
     init_db()
+
+
+@app.get("/agent/health")
+async def health():
+    return JSONResponse({"ok": True, "service": "agent"})
 
 
 # ─── Auth routes ──────────────────────────────────────────────────────────────
@@ -195,6 +274,11 @@ async def save_config(
     return RedirectResponse("/agent/config?saved=1", status_code=302)
 
 
+@app.get("/agent/internal/health")
+async def internal_health(_: None = Depends(require_ingest_token)):
+    return JSONResponse({"ok": True, "service": "agent-ingest"})
+
+
 # ─── API — Trigger Run ────────────────────────────────────────────────────────
 
 @app.post("/agent/api/run")
@@ -263,6 +347,30 @@ async def api_trigger_run(request: Request, db: Session = Depends(get_db)):
     t.start()
 
     return JSONResponse({"run_id": run_id, "status": "started"})
+
+
+@app.post("/agent/internal/ingest/google-ads")
+async def google_ads_ingest(
+    payload: IngestPayload,
+    _: None = Depends(require_ingest_token),
+):
+    try:
+        result = ingest_google_ads_payload(payload)
+        return JSONResponse(result)
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+@app.post("/agent/internal/ingest/bing-ads")
+async def bing_ads_ingest(
+    payload: IngestPayload,
+    _: None = Depends(require_ingest_token),
+):
+    try:
+        result = ingest_bing_ads_payload(payload)
+        return JSONResponse(result)
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
 
 
 # ─── API — Runs List / Detail ─────────────────────────────────────────────────
@@ -367,16 +475,20 @@ Be specific with numbers. Keep responses focused and actionable."""
     messages.append(HumanMessage(content=user_msg))
 
     model = get_config(db, "openai_model", "gpt-4o")
-    llm = create_llm(model=model, temperature=0.3)
 
     async def stream_response():
         full_response = ""
         try:
-            for chunk in llm.stream(messages):
-                token = chunk.content
-                if token:
-                    full_response += token
-                    yield f"data: {json.dumps({'token': token})}\n\n"
+            try:
+                llm = create_llm(model=model, temperature=0.3)
+                for chunk in llm.stream(messages):
+                    token = chunk.content
+                    if token:
+                        full_response += token
+                        yield f"data: {json.dumps({'token': token})}\n\n"
+            except Exception:
+                full_response = _build_chat_fallback(run, user_msg)
+                yield f"data: {json.dumps({'token': full_response})}\n\n"
         finally:
             # Persist assistant response
             save_db = SessionLocal()

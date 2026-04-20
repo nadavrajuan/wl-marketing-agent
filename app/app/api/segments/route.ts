@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import pool from "@/lib/db";
+import { getSegments } from "@/lib/weight-agent";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
@@ -13,23 +16,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid group_by" }, { status: 400 });
   }
 
-  const sql = `
-    SELECT
-      COALESCE(${groupBy}::text, 'unknown') AS segment,
-      COUNT(*) AS total_events,
-      COUNT(*) FILTER (WHERE funnel_step = 'Quiz Start') AS quiz_starts,
-      COUNT(*) FILTER (WHERE funnel_step = 'Quiz Complete') AS quiz_completes,
-      COUNT(*) FILTER (WHERE funnel_step = 'Purchase') AS purchases,
-      COALESCE(SUM(value), 0) AS revenue,
-      ROUND(
-        COALESCE(AVG(value) FILTER (WHERE value > 0), 0)::numeric, 2
-      ) AS avg_order_value
-    FROM conversions
-    GROUP BY ${groupBy}
-    ORDER BY total_events DESC
-    LIMIT 50
-  `;
-
-  const { rows } = await pool.query(sql);
+  const rows = await getSegments(params, groupBy);
   return NextResponse.json(rows);
 }
