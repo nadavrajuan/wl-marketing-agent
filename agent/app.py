@@ -163,7 +163,7 @@ async def health():
 async def login_page(request: Request):
     if request.session.get("user"):
         return RedirectResponse("/agent/", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "login.html", {"error": None})
 
 @app.post("/agent/login", response_class=HTMLResponse)
 async def login_post(
@@ -176,7 +176,7 @@ async def login_post(
     if user:
         request.session["user"] = {"username": user.username, "is_admin": user.is_admin}
         return RedirectResponse("/agent/", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid credentials"})
+    return templates.TemplateResponse(request, "login.html", {"error": "Invalid credentials"})
 
 @app.get("/agent/logout")
 async def logout(request: Request):
@@ -203,8 +203,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     except Exception:
         db_stats = {}
 
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "dashboard.html", {
         "user": user,
         "runs": runs,
         "total_runs": total,
@@ -226,8 +225,7 @@ async def run_detail(request: Request, run_id: str, db: Session = Depends(get_db
     steps = db.query(RunStep).filter_by(run_id=run_id).order_by(RunStep.step_number).all()
     chat  = db.query(RunChatMessage).filter_by(run_id=run_id).order_by(RunChatMessage.created_at).all()
 
-    return templates.TemplateResponse("run_detail.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "run_detail.html", {
         "run": run,
         "steps": steps,
         "chat_messages": chat,
@@ -243,8 +241,7 @@ async def prompts_page(request: Request, db: Session = Depends(get_db)):
     prompts = {k: get_prompt(db, k) for k in DEFAULT_PROMPTS}
     meta    = {k: {"display_name": v["display_name"], "description": v["description"]}
                for k, v in DEFAULT_PROMPTS.items()}
-    return templates.TemplateResponse("prompts.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "prompts.html", {
         "prompts": prompts,
         "meta": meta,
     })
@@ -277,7 +274,7 @@ async def config_page(request: Request, db: Session = Depends(get_db)):
         "openai_model":    get_config(db, "openai_model", "gpt-4o"),
         "email_recipients":get_config(db, "email_recipients", ""),
     }
-    return templates.TemplateResponse("config.html", {"request": request, "cfg": cfg})
+    return templates.TemplateResponse(request, "config.html", {"cfg": cfg})
 
 @app.post("/agent/config")
 async def save_config(

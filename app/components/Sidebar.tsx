@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+const agentUrl = process.env.NEXT_PUBLIC_AGENT_BASE_URL || "/agent/";
+
 const nav = [
   { href: "/", label: "Action Board", icon: "📊" },
   { href: "/copy-lab", label: "Copy Lab", icon: "🧠" },
@@ -10,9 +12,8 @@ const nav = [
   { href: "/explorer", label: "Data Explorer", icon: "🗂️" },
   { href: "/segments", label: "Segments", icon: "📈" },
   { href: "/schema", label: "Data Schema", icon: "🧬" },
+  { href: agentUrl, label: "AI Agent", icon: "⚡", external: true },
 ];
-
-const agentUrl = process.env.NEXT_PUBLIC_AGENT_BASE_URL || "/agent/";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -23,18 +24,31 @@ export default function Sidebar() {
         <div className="text-xs text-gray-400 mt-0.5">Bing + Google Ads Analytics</div>
       </div>
       <nav className="flex flex-col gap-1">
-        {nav.map(({ href, label, icon }) => {
-          const active = pathname === href;
+        {nav.map(({ href, label, icon, external }) => {
+          const active = !external && pathname === href;
+          const className = `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+            active
+              ? "bg-indigo-600 text-white font-medium"
+              : "text-gray-400 hover:text-white hover:bg-gray-800"
+          }`;
+
+          if (external) {
+            return (
+              <a
+                key={href}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={className}
+              >
+                <span className="text-base">{icon}</span>
+                {label}
+              </a>
+            );
+          }
+
           return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                active
-                  ? "bg-indigo-600 text-white font-medium"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800"
-              }`}
-            >
+            <Link key={href} href={href} className={className}>
               <span className="text-base">{icon}</span>
               {label}
             </Link>
@@ -42,15 +56,6 @@ export default function Sidebar() {
         })}
       </nav>
       <div className="mt-auto px-2 pt-4 border-t border-gray-800">
-        <a
-          href={agentUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-indigo-400 hover:text-white hover:bg-indigo-900/40 transition-colors"
-        >
-          <span className="text-base">⚡</span>
-          AI Agent
-        </a>
         <div className="px-3 pt-2 text-xs text-gray-600">
           Goal: Max conversions / Min price
         </div>
