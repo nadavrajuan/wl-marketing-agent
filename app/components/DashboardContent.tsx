@@ -163,8 +163,8 @@ export default function DashboardContent() {
         />
         <StatCard
           label="Spend Confidence"
-          value="Hybrid"
-          sub="Exact Google + inferred Bing"
+          value="Native"
+          sub="Exact Google + native Bing allocation"
           color="default"
         />
       </div>

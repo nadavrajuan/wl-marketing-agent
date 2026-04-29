@@ -1,7 +1,17 @@
 import { Pool } from "pg";
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+let pool: Pool | null = null;
 
-export default pool;
+export function getPool() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is required for database-backed features.");
+  }
+
+  if (!pool) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+    });
+  }
+
+  return pool;
+}

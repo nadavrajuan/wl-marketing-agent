@@ -67,7 +67,7 @@ export default function KeywordsContent() {
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">Keywords</h1>
-        <p className="text-gray-400 text-sm mt-1">Purchase-first keyword economics. Google uses exact keyword-day spend and GCLID joins; Bing stays inferred.</p>
+        <p className="text-gray-400 text-sm mt-1">Purchase-first keyword economics. Google uses exact keyword-day spend and GCLID joins; Bing uses native ad-day spend allocated by matched visit share.</p>
       </div>
 
       <div className="flex flex-wrap gap-3 mb-5">
