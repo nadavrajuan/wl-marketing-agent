@@ -9,6 +9,7 @@ const nav = [
   { href: "/copy-lab", label: "Copy Lab", icon: "🧠" },
   { href: "/campaigns", label: "Campaigns", icon: "🎯" },
   { href: "/keywords", label: "Keywords", icon: "🔍" },
+  { href: "/search-queries", label: "Search Terms", icon: "🔎" },
   { href: "/explorer", label: "Data Explorer", icon: "🗂️" },
   { href: "/segments", label: "Segments", icon: "📈" },
   { href: "/schema", label: "Data Schema", icon: "🧬" },

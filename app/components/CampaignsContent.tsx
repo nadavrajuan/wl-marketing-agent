@@ -7,18 +7,22 @@ interface Campaign {
   campaign_id: string;
   campaign_name: string | null;
   platform: string;
-  total_events: string;
-  quiz_starts: string;
-  quiz_completes: string;
+  visits: string;
+  add_to_carts: string;
   purchases: string;
-  revenue: string;
-  avg_order_value: string;
+  purchase_revenue: string;
+  add_to_cart_proxy_value: string;
   adgroup_count: string;
   keyword_count: string;
   spend: string;
+  purchase_profit: string;
+  proxy_profit: string;
+  purchase_roi_pct: string | null;
+  proxy_roi_pct: string | null;
   cost_per_purchase: string | null;
-  quiz_completion_rate: string | null;
-  purchase_rate: string | null;
+  purchase_rate_per_visit: string | null;
+  click_to_visit_match_pct: string | null;
+  avg_purchase_cycle_minutes: string | null;
 }
 
 const FILTERS = [
@@ -37,7 +41,7 @@ export default function CampaignsContent() {
   const searchParams = useSearchParams();
   const [data, setData] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortKey, setSortKey] = useState<keyof Campaign>("total_events");
+  const [sortKey, setSortKey] = useState<keyof Campaign>("purchase_profit");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
@@ -74,7 +78,7 @@ export default function CampaignsContent() {
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">Campaigns</h1>
-        <p className="text-gray-400 text-sm mt-1">{data.length} campaigns · click headers to sort</p>
+        <p className="text-gray-400 text-sm mt-1">{data.length} campaigns · purchase-first economics by campaign</p>
       </div>
 
       <FilterBar filters={FILTERS} />
@@ -88,16 +92,17 @@ export default function CampaignsContent() {
               <tr>
                 <th className="text-left py-2 px-3 font-medium text-gray-400">Campaign</th>
                 <th className="text-left py-2 px-3 font-medium text-gray-400">Platform</th>
-                {th("Events", "total_events")}
-                {th("Quiz Starts", "quiz_starts")}
-                {th("Completions", "quiz_completes")}
+                {th("Visits", "visits")}
+                {th("ATC", "add_to_carts")}
                 {th("Purchases", "purchases")}
                 {th("Spend", "spend")}
                 {th("CPA", "cost_per_purchase")}
-                {th("Revenue", "revenue")}
-                {th("Avg Order", "avg_order_value")}
-                {th("Quiz CVR%", "quiz_completion_rate")}
-                {th("Purch CVR%", "purchase_rate")}
+                {th("Revenue", "purchase_revenue")}
+                {th("Profit", "purchase_profit")}
+                {th("ROI%", "purchase_roi_pct")}
+                {th("Visit CVR%", "purchase_rate_per_visit")}
+                {th("Click→Visit%", "click_to_visit_match_pct")}
+                {th("Cycle Min", "avg_purchase_cycle_minutes")}
                 {th("Ad Groups", "adgroup_count")}
                 {th("Keywords", "keyword_count")}
               </tr>
@@ -116,18 +121,21 @@ export default function CampaignsContent() {
                       "bg-gray-700 text-gray-300"
                     }`}>{c.platform}</span>
                   </td>
-                  <td className="py-2 px-3 text-right text-gray-300">{Number(c.total_events).toLocaleString()}</td>
-                  <td className="py-2 px-3 text-right text-gray-400">{Number(c.quiz_starts).toLocaleString()}</td>
-                  <td className="py-2 px-3 text-right text-gray-400">{Number(c.quiz_completes).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right text-gray-300">{Number(c.visits).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right text-amber-300">{Number(c.add_to_carts).toLocaleString()}</td>
                   <td className="py-2 px-3 text-right text-emerald-400 font-medium">{Number(c.purchases).toLocaleString()}</td>
                   <td className="py-2 px-3 text-right text-gray-300">${Number(c.spend || 0).toLocaleString()}</td>
                   <td className="py-2 px-3 text-right text-cyan-400">
                     {c.cost_per_purchase ? `$${Number(c.cost_per_purchase).toFixed(0)}` : "—"}
                   </td>
-                  <td className="py-2 px-3 text-right text-yellow-400">${Number(c.revenue).toLocaleString()}</td>
-                  <td className="py-2 px-3 text-right text-gray-400">${Number(c.avg_order_value).toFixed(0)}</td>
-                  <td className="py-2 px-3 text-right text-purple-400">{c.quiz_completion_rate ? `${c.quiz_completion_rate}%` : "—"}</td>
-                  <td className="py-2 px-3 text-right text-blue-400">{c.purchase_rate ? `${c.purchase_rate}%` : "—"}</td>
+                  <td className="py-2 px-3 text-right text-yellow-400">${Number(c.purchase_revenue).toLocaleString()}</td>
+                  <td className={`py-2 px-3 text-right font-medium ${Number(c.purchase_profit) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                    ${Number(c.purchase_profit).toLocaleString()}
+                  </td>
+                  <td className="py-2 px-3 text-right text-blue-400">{c.purchase_roi_pct ? `${c.purchase_roi_pct}%` : "—"}</td>
+                  <td className="py-2 px-3 text-right text-indigo-300">{c.purchase_rate_per_visit ? `${c.purchase_rate_per_visit}%` : "—"}</td>
+                  <td className="py-2 px-3 text-right text-gray-400">{c.click_to_visit_match_pct ? `${c.click_to_visit_match_pct}%` : "—"}</td>
+                  <td className="py-2 px-3 text-right text-gray-400">{c.avg_purchase_cycle_minutes ? Number(c.avg_purchase_cycle_minutes).toFixed(1) : "—"}</td>
                   <td className="py-2 px-3 text-right text-gray-500">{c.adgroup_count}</td>
                   <td className="py-2 px-3 text-right text-gray-500">{c.keyword_count}</td>
                 </tr>

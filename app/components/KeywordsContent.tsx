@@ -2,13 +2,22 @@
 import { useEffect, useState } from "react";
 
 interface KwRow {
+  platform_id: string;
   keyword: string;
-  total_events: string;
-  quiz_starts: string;
-  quiz_completes: string;
-  purchases: string;
-  revenue: string;
-  purchase_rate: string | null;
+  top_campaign: string | null;
+  top_landing_page: string | null;
+  visits: string;
+  add_to_carts: string;
+  net_purchases: string;
+  estimated_spend: string;
+  purchase_revenue: string;
+  purchase_profit: string;
+  purchase_roi_pct: string | null;
+  purchase_rate_per_visit: string | null;
+  spend_confidence: string;
+  keyword_match_type?: string | null;
+  keyword_status?: string | null;
+  quality_score?: string | null;
 }
 
 export default function KeywordsContent() {
@@ -17,7 +26,7 @@ export default function KeywordsContent() {
   const [search, setSearch] = useState("");
   const [platform, setPlatform] = useState("");
   const [matchType, setMatchType] = useState("");
-  const [sortKey, setSortKey] = useState<keyof KwRow>("total_events");
+  const [sortKey, setSortKey] = useState<keyof KwRow>("purchase_profit");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
@@ -58,7 +67,7 @@ export default function KeywordsContent() {
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">Keywords</h1>
-        <p className="text-gray-400 text-sm mt-1">Keyword performance across all campaigns</p>
+        <p className="text-gray-400 text-sm mt-1">Purchase-first keyword economics. Google uses exact keyword-day spend and GCLID joins; Bing stays inferred.</p>
       </div>
 
       <div className="flex flex-wrap gap-3 mb-5">
@@ -95,32 +104,61 @@ export default function KeywordsContent() {
             <thead className="border-b border-gray-800">
               <tr>
                 <th className="text-left py-2 px-3 font-medium text-gray-400">Keyword</th>
-                {th("Events", "total_events")}
-                {th("Quiz Starts", "quiz_starts")}
-                {th("Completions", "quiz_completes")}
-                {th("Purchases", "purchases")}
-                {th("Revenue", "revenue")}
-                {th("CVR%", "purchase_rate")}
+                <th className="text-left py-2 px-3 font-medium text-gray-400">Platform</th>
+                {th("Visits", "visits")}
+                {th("ATC", "add_to_carts")}
+                {th("Purchases", "net_purchases")}
+                {th("Spend", "estimated_spend")}
+                {th("Revenue", "purchase_revenue")}
+                {th("Profit", "purchase_profit")}
+                {th("ROI%", "purchase_roi_pct")}
+                {th("CVR%", "purchase_rate_per_visit")}
+                <th className="text-left py-2 px-3 font-medium text-gray-400">Top LP</th>
               </tr>
             </thead>
             <tbody>
               {sorted.map((row) => (
-                <tr key={row.keyword} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                  <td className="py-2 px-3 text-gray-200">{row.keyword}</td>
-                  <td className="py-2 px-3 text-right text-gray-300">{Number(row.total_events).toLocaleString()}</td>
-                  <td className="py-2 px-3 text-right text-gray-400">{Number(row.quiz_starts).toLocaleString()}</td>
-                  <td className="py-2 px-3 text-right text-gray-400">{Number(row.quiz_completes).toLocaleString()}</td>
-                  <td className="py-2 px-3 text-right text-emerald-400 font-medium">{row.purchases}</td>
-                  <td className="py-2 px-3 text-right text-yellow-400">${Number(row.revenue).toLocaleString()}</td>
+                <tr key={`${row.platform_id}:${row.keyword}`} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                  <td className="py-2 px-3">
+                    <div className="text-gray-200">{row.keyword}</div>
+                    <div className="text-xs text-gray-500">
+                      {row.top_campaign || "—"}
+                      {row.keyword_match_type ? ` · ${row.keyword_match_type}` : ""}
+                      {row.quality_score ? ` · QS ${row.quality_score}` : ""}
+                    </div>
+                  </td>
+                  <td className="py-2 px-3">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      row.platform_id === "google" ? "bg-emerald-900 text-emerald-300" : "bg-blue-900 text-blue-300"
+                    }`}>{row.platform_id}</span>
+                  </td>
+                  <td className="py-2 px-3 text-right text-gray-300">{Number(row.visits).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right text-amber-300">{Number(row.add_to_carts).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right text-emerald-400 font-medium">{Number(row.net_purchases).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right text-gray-300">${Number(row.estimated_spend || 0).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right text-yellow-400">${Number(row.purchase_revenue || 0).toLocaleString()}</td>
+                  <td className={`py-2 px-3 text-right font-medium ${Number(row.purchase_profit) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                    ${Number(row.purchase_profit || 0).toLocaleString()}
+                  </td>
                   <td className="py-2 px-3 text-right">
-                    {row.purchase_rate ? (
+                    {row.purchase_roi_pct ? (
                       <span className={`px-2 py-0.5 rounded text-xs ${
-                        Number(row.purchase_rate) >= 5 ? "bg-emerald-900 text-emerald-300" :
-                        Number(row.purchase_rate) >= 2 ? "bg-blue-900 text-blue-300" :
-                        "bg-gray-800 text-gray-400"
-                      }`}>{row.purchase_rate}%</span>
+                        Number(row.purchase_roi_pct) >= 20 ? "bg-emerald-900 text-emerald-300" :
+                        Number(row.purchase_roi_pct) >= 0 ? "bg-blue-900 text-blue-300" :
+                        "bg-rose-950 text-rose-300"
+                      }`}>{row.purchase_roi_pct}%</span>
                     ) : "—"}
                   </td>
+                  <td className="py-2 px-3 text-right">
+                    {row.purchase_rate_per_visit ? (
+                      <span className={`px-2 py-0.5 rounded text-xs ${
+                        Number(row.purchase_rate_per_visit) >= 5 ? "bg-emerald-900 text-emerald-300" :
+                        Number(row.purchase_rate_per_visit) >= 2 ? "bg-blue-900 text-blue-300" :
+                        "bg-gray-800 text-gray-400"
+                      }`}>{row.purchase_rate_per_visit}%</span>
+                    ) : "—"}
+                  </td>
+                  <td className="py-2 px-3 text-xs text-gray-400 max-w-[220px] truncate">{row.top_landing_page || "—"}</td>
                 </tr>
               ))}
             </tbody>

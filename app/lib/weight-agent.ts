@@ -1,7 +1,15 @@
 import { runBigQuery } from "@/lib/bigquery";
+import {
+  getGoogleAdCopyDiagnostics,
+  getGoogleKeywordOpportunities,
+  getGoogleSearchQueryDiagnostics,
+  getGoogleTransferInventory,
+} from "@/lib/google-ads-transfer";
 
 const PROJECT_ID = process.env.BIGQUERY_PROJECT_ID || "weightagent";
 const DATASET_ID = process.env.BIGQUERY_DATASET || "WeightAgent";
+const GOOGLE_ADS_DATASET_ID = process.env.GOOGLE_ADS_DATASET || "GoogleAds";
+const GOOGLE_ADS_CUSTOMER_SUFFIX = process.env.GOOGLE_ADS_CUSTOMER_SUFFIX || "4808949235";
 export const PURCHASE_VALUE_USD = Number(process.env.DEFAULT_PURCHASE_VALUE_USD || "390");
 export const ADD_TO_CART_SHARE_OF_PURCHASE = Number(
   process.env.DEFAULT_ADD_TO_CART_SHARE_OF_PURCHASE || "0.25",
@@ -12,6 +20,10 @@ export const ADD_TO_CART_VALUE_USD = Number(
 
 function table(name: string) {
   return `\`${PROJECT_ID}.${DATASET_ID}.${name}\``;
+}
+
+function googleAdsTable(name: string) {
+  return `\`${PROJECT_ID}.${GOOGLE_ADS_DATASET_ID}.${name}_${GOOGLE_ADS_CUSTOMER_SUFFIX}\``;
 }
 
 const baseCtes = String.raw`
@@ -120,48 +132,78 @@ joined AS (
   LEFT JOIN visits_norm v
     ON c.visit_id = v.id
 ),
+google_campaign_entities AS (
+  SELECT * EXCEPT(rn)
+  FROM (
+    SELECT
+      CAST(campaign_id AS STRING) AS campaign_id,
+      campaign_name,
+      ROW_NUMBER() OVER (PARTITION BY CAST(campaign_id AS STRING) ORDER BY _DATA_DATE DESC) AS rn
+    FROM ${googleAdsTable("ads_Campaign")}
+  )
+  WHERE rn = 1
+),
+google_adgroup_entities AS (
+  SELECT * EXCEPT(rn)
+  FROM (
+    SELECT
+      CAST(campaign_id AS STRING) AS campaign_id,
+      CAST(ad_group_id AS STRING) AS adgroup_id,
+      ad_group_name,
+      ROW_NUMBER() OVER (
+        PARTITION BY CAST(campaign_id AS STRING), CAST(ad_group_id AS STRING)
+        ORDER BY _DATA_DATE DESC
+      ) AS rn
+    FROM ${googleAdsTable("ads_AdGroup")}
+  )
+  WHERE rn = 1
+),
+google_ad_entities AS (
+  SELECT * EXCEPT(rn)
+  FROM (
+    SELECT
+      CAST(campaign_id AS STRING) AS campaign_id,
+      CAST(ad_group_id AS STRING) AS adgroup_id,
+      CAST(ad_group_ad_ad_id AS STRING) AS ad_id,
+      ad_group_ad_ad_final_urls,
+      ROW_NUMBER() OVER (
+        PARTITION BY CAST(campaign_id AS STRING), CAST(ad_group_id AS STRING), CAST(ad_group_ad_ad_id AS STRING)
+        ORDER BY _DATA_DATE DESC
+      ) AS rn
+    FROM ${googleAdsTable("ads_Ad")}
+  )
+  WHERE rn = 1
+),
 media_daily AS (
   SELECT
-    date AS data_date,
+    segments_date AS data_date,
     'google' AS platform_id,
-    CAST(campaign_id AS STRING) AS campaign_id,
-    CAST(ad_group_id AS STRING) AS adgroup_id,
-    CAST(ad_id AS STRING) AS ad_id,
-    campaign_name,
-    ad_group_name,
+    CAST(s.campaign_id AS STRING) AS campaign_id,
+    CAST(s.ad_group_id AS STRING) AS adgroup_id,
+    CAST(s.ad_group_ad_ad_id AS STRING) AS ad_id,
+    gce.campaign_name,
+    gae.ad_group_name,
     CASE
-      WHEN LOWER(device_type) = 'mobile' THEN 'mobile'
-      WHEN LOWER(device_type) = 'desktop' THEN 'desktop'
-      WHEN LOWER(device_type) = 'tablet' THEN 'tablet'
-      ELSE LOWER(COALESCE(device_type, 'unknown'))
+      WHEN LOWER(s.segments_device) = 'mobile' THEN 'mobile'
+      WHEN LOWER(s.segments_device) = 'desktop' THEN 'desktop'
+      WHEN LOWER(s.segments_device) = 'tablet' THEN 'tablet'
+      ELSE LOWER(COALESCE(s.segments_device, 'unknown'))
     END AS device_type,
-    final_url AS final_url_raw,
-    CAST(impressions AS INT64) AS impressions,
-    CAST(clicks AS INT64) AS clicks,
-    CAST(spend AS FLOAT64) AS spend,
-    CAST(conversions AS FLOAT64) AS uploaded_conversions
-  FROM ${table("google_ad_data")}
-  UNION ALL
-  SELECT
-    data_date,
-    'bing' AS platform_id,
-    CAST(campaign_id AS STRING) AS campaign_id,
-    CAST(ad_group_id AS STRING) AS adgroup_id,
-    CAST(ad_id AS STRING) AS ad_id,
-    campaign_name,
-    ad_group_name,
-    CASE
-      WHEN LOWER(device_type) IN ('computer', 'desktop') THEN 'desktop'
-      WHEN LOWER(device_type) = 'mobile' THEN 'mobile'
-      WHEN LOWER(device_type) = 'tablet' THEN 'tablet'
-      ELSE LOWER(COALESCE(device_type, 'unknown'))
-    END AS device_type,
-    final_url AS final_url_raw,
-    CAST(impressions AS INT64) AS impressions,
-    CAST(clicks AS INT64) AS clicks,
-    CAST(spend AS FLOAT64) AS spend,
-    CAST(conversions AS FLOAT64) AS uploaded_conversions
-  FROM ${table("bing_ad_data")}
+    gad.ad_group_ad_ad_final_urls AS final_url_raw,
+    CAST(s.metrics_impressions AS INT64) AS impressions,
+    CAST(s.metrics_clicks AS INT64) AS clicks,
+    ROUND(CAST(s.metrics_cost_micros AS FLOAT64) / 1000000, 2) AS spend,
+    CAST(s.metrics_conversions AS FLOAT64) AS uploaded_conversions
+  FROM ${googleAdsTable("ads_AdBasicStats")} s
+  LEFT JOIN google_campaign_entities gce
+    ON gce.campaign_id = CAST(s.campaign_id AS STRING)
+  LEFT JOIN google_adgroup_entities gae
+    ON gae.campaign_id = CAST(s.campaign_id AS STRING)
+   AND gae.adgroup_id = CAST(s.ad_group_id AS STRING)
+  LEFT JOIN google_ad_entities gad
+    ON gad.campaign_id = CAST(s.campaign_id AS STRING)
+   AND gad.adgroup_id = CAST(s.ad_group_id AS STRING)
+   AND gad.ad_id = CAST(s.ad_group_ad_ad_id AS STRING)
 ),
 media_daily_norm AS (
   SELECT
@@ -397,6 +439,7 @@ export async function getDaily(params: URLSearchParams) {
 export async function getCampaigns(params: URLSearchParams) {
   const filters = buildJoinedFilters({ params });
   const mediaFilters = buildJoinedFilters({ params, alias: "m", dateField: "data_date" });
+  const visitFilters = buildJoinedFilters({ params, alias: "v", dateField: "entered_at_date" });
 
   const sql = `
     ${baseCtes},
@@ -413,19 +456,28 @@ export async function getCampaigns(params: URLSearchParams) {
       ${mediaFilters.where}
       GROUP BY m.platform_id, m.campaign_id
     ),
+    visit_campaigns AS (
+      SELECT
+        v.platform_id,
+        v.campaign_id,
+        COUNT(*) AS visits
+      FROM visits_norm v
+      ${visitFilters.where}
+      GROUP BY v.platform_id, v.campaign_id
+    ),
     conversion_campaigns AS (
       SELECT
         j.platform_id,
         j.campaign_id,
         MAX(j.utm_campaign) AS utm_campaign,
-        COUNT(*) AS total_events,
-        COUNTIF(j.conversion_class = 'quiz_start') AS quiz_starts,
-        COUNTIF(j.conversion_class = 'quiz_complete') AS quiz_completes,
+        COUNTIF(j.conversion_class = 'add_to_cart') AS add_to_carts,
         COUNTIF(j.conversion_class = 'purchase') AS gross_purchases,
         COUNTIF(j.conversion_class = 'purchase_reversal') AS purchase_reversals,
         COUNTIF(j.conversion_class = 'purchase') - COUNTIF(j.conversion_class = 'purchase_reversal') AS purchases,
-        ROUND(SUM(j.modeled_value_usd), 2) AS revenue,
-        ROUND(AVG(CASE WHEN j.conversion_class = 'purchase' THEN j.modeled_value_usd END), 2) AS avg_order_value,
+        ROUND(COUNTIF(j.conversion_class = 'purchase') * ${PURCHASE_VALUE_USD}, 2) AS gross_purchase_revenue,
+        ROUND((COUNTIF(j.conversion_class = 'purchase') - COUNTIF(j.conversion_class = 'purchase_reversal')) * ${PURCHASE_VALUE_USD}, 2) AS purchase_revenue,
+        ROUND(COUNTIF(j.conversion_class = 'add_to_cart') * ${ADD_TO_CART_VALUE_USD}, 2) AS add_to_cart_proxy_value,
+        ROUND(AVG(CASE WHEN j.conversion_class = 'purchase' THEN TIMESTAMP_DIFF(j.conversion_at_ts, j.entered_at_ts, SECOND) END) / 60, 1) AS avg_purchase_cycle_minutes,
         COUNT(DISTINCT j.keyword) AS keyword_count
       FROM joined j
       ${filters.where}
@@ -435,66 +487,41 @@ export async function getCampaigns(params: URLSearchParams) {
       COALESCE(mc.campaign_id, cc.campaign_id) AS campaign_id,
       COALESCE(mc.campaign_name, cc.utm_campaign) AS campaign_name,
       COALESCE(mc.platform_id, cc.platform_id) AS platform,
-      COALESCE(cc.total_events, 0) AS total_events,
-      COALESCE(cc.quiz_starts, 0) AS quiz_starts,
-      COALESCE(cc.quiz_completes, 0) AS quiz_completes,
+      COALESCE(vc.visits, 0) AS visits,
+      COALESCE(cc.add_to_carts, 0) AS add_to_carts,
       COALESCE(cc.purchases, 0) AS purchases,
       COALESCE(cc.gross_purchases, 0) AS gross_purchases,
       COALESCE(cc.purchase_reversals, 0) AS purchase_reversals,
-      COALESCE(cc.revenue, 0) AS revenue,
-      COALESCE(cc.avg_order_value, ${PURCHASE_VALUE_USD}) AS avg_order_value,
+      COALESCE(cc.purchase_revenue, 0) AS purchase_revenue,
+      COALESCE(cc.add_to_cart_proxy_value, 0) AS add_to_cart_proxy_value,
       COALESCE(mc.adgroup_count, 0) AS adgroup_count,
       COALESCE(cc.keyword_count, 0) AS keyword_count,
       COALESCE(mc.impressions, 0) AS impressions,
       COALESCE(mc.clicks, 0) AS clicks,
       COALESCE(mc.spend, 0) AS spend,
-      ROUND(SAFE_DIVIDE(COALESCE(cc.quiz_completes, 0), NULLIF(COALESCE(cc.quiz_starts, 0), 0)) * 100, 1) AS quiz_completion_rate,
-      ROUND(SAFE_DIVIDE(COALESCE(cc.purchases, 0), NULLIF(COALESCE(cc.quiz_starts, 0), 0)) * 100, 2) AS purchase_rate,
-      ROUND(SAFE_DIVIDE(COALESCE(mc.spend, 0), NULLIF(COALESCE(cc.purchases, 0), 0)), 2) AS cost_per_purchase
+      COALESCE(cc.avg_purchase_cycle_minutes, 0) AS avg_purchase_cycle_minutes,
+      ROUND(COALESCE(cc.purchase_revenue, 0) - COALESCE(mc.spend, 0), 2) AS purchase_profit,
+      ROUND(COALESCE(cc.purchase_revenue, 0) + COALESCE(cc.add_to_cart_proxy_value, 0) - COALESCE(mc.spend, 0), 2) AS proxy_profit,
+      ROUND(SAFE_DIVIDE(COALESCE(cc.purchase_revenue, 0) - COALESCE(mc.spend, 0), NULLIF(COALESCE(mc.spend, 0), 0)) * 100, 2) AS purchase_roi_pct,
+      ROUND(SAFE_DIVIDE(COALESCE(cc.purchase_revenue, 0) + COALESCE(cc.add_to_cart_proxy_value, 0) - COALESCE(mc.spend, 0), NULLIF(COALESCE(mc.spend, 0), 0)) * 100, 2) AS proxy_roi_pct,
+      ROUND(SAFE_DIVIDE(COALESCE(mc.spend, 0), NULLIF(COALESCE(cc.purchases, 0), 0)), 2) AS cost_per_purchase,
+      ROUND(SAFE_DIVIDE(COALESCE(cc.purchases, 0), NULLIF(COALESCE(vc.visits, 0), 0)) * 100, 2) AS purchase_rate_per_visit,
+      ROUND(SAFE_DIVIDE(COALESCE(vc.visits, 0), NULLIF(COALESCE(mc.clicks, 0), 0)) * 100, 2) AS click_to_visit_match_pct
     FROM media_campaigns mc
     FULL OUTER JOIN conversion_campaigns cc
       ON mc.platform_id = cc.platform_id
      AND mc.campaign_id = cc.campaign_id
-    ORDER BY spend DESC, purchases DESC, total_events DESC
+    LEFT JOIN visit_campaigns vc
+      ON vc.platform_id = COALESCE(mc.platform_id, cc.platform_id)
+     AND vc.campaign_id = COALESCE(mc.campaign_id, cc.campaign_id)
+    ORDER BY purchase_profit DESC, purchases DESC, spend DESC
   `;
 
-  return runBigQuery(sql, { ...mediaFilters.params, ...filters.params });
+  return runBigQuery(sql, { ...mediaFilters.params, ...filters.params, ...visitFilters.params });
 }
 
 export async function getKeywords(params: URLSearchParams, limit = 100) {
-  const filters = buildJoinedFilters({ params, alias: "v", dateField: "entered_at_date" });
-  const keywordWhere = [
-    filters.where ? filters.where.replace(/^WHERE /, "") : "",
-    "v.keyword IS NOT NULL",
-    "v.keyword != 'unknown'",
-  ].filter(Boolean);
-  const sql = `
-    ${baseCtes}
-    SELECT
-      v.keyword AS keyword,
-      COUNT(*) AS total_events,
-      COUNTIF(c.conversion_class = 'quiz_start') AS quiz_starts,
-      COUNTIF(c.conversion_class = 'quiz_complete') AS quiz_completes,
-      COUNTIF(c.conversion_class = 'purchase') - COUNTIF(c.conversion_class = 'purchase_reversal') AS purchases,
-      ROUND(SUM(COALESCE(c.modeled_value_usd, 0)), 2) AS revenue,
-      ROUND(
-        SAFE_DIVIDE(
-          COUNTIF(c.conversion_class = 'purchase') - COUNTIF(c.conversion_class = 'purchase_reversal'),
-          NULLIF(COUNT(*), 0)
-        ) * 100,
-        2
-      ) AS purchase_rate
-    FROM visits_norm v
-    LEFT JOIN conversions_norm c
-      ON c.visit_id = v.id
-    ${keywordWhere.length > 0 ? `WHERE ${keywordWhere.join(" AND ")}` : ""}
-    AND LOWER(v.keyword) NOT LIKE '%top5weightchoices.com%'
-    GROUP BY v.keyword
-    ORDER BY total_events DESC, purchases DESC
-    LIMIT ${limit}
-  `;
-
-  return runBigQuery(sql, filters.params);
+  return getKeywordOpportunities(params, limit);
 }
 
 export async function getSegments(params: URLSearchParams, groupBy: string) {
@@ -519,11 +546,13 @@ export async function getSegments(params: URLSearchParams, groupBy: string) {
     SELECT
       COALESCE(CAST(${groupExpr} AS STRING), 'unknown') AS segment,
       COUNT(*) AS total_events,
-      COUNTIF(j.conversion_class = 'quiz_start') AS quiz_starts,
-      COUNTIF(j.conversion_class = 'quiz_complete') AS quiz_completes,
+      COUNTIF(j.conversion_class = 'add_to_cart') AS add_to_carts,
+      COUNTIF(j.conversion_class = 'purchase') AS gross_purchases,
+      COUNTIF(j.conversion_class = 'purchase_reversal') AS purchase_reversals,
       COUNTIF(j.conversion_class = 'purchase') - COUNTIF(j.conversion_class = 'purchase_reversal') AS purchases,
-      ROUND(SUM(j.modeled_value_usd), 2) AS revenue,
-      ROUND(AVG(CASE WHEN j.conversion_class = 'purchase' THEN j.modeled_value_usd END), 2) AS avg_order_value
+      ROUND(SUM(j.modeled_value_usd), 2) AS modeled_revenue,
+      ROUND(COUNTIF(j.conversion_class = 'purchase') * ${PURCHASE_VALUE_USD}, 2) AS gross_purchase_revenue,
+      ROUND((COUNTIF(j.conversion_class = 'purchase') - COUNTIF(j.conversion_class = 'purchase_reversal')) * ${PURCHASE_VALUE_USD}, 2) AS purchase_revenue
     FROM joined j
     ${filters.where}
     GROUP BY segment
@@ -532,6 +561,10 @@ export async function getSegments(params: URLSearchParams, groupBy: string) {
   `;
 
   return runBigQuery(sql, filters.params);
+}
+
+export async function getSearchQueries(params: URLSearchParams, limit = 100) {
+  return getGoogleSearchQueryDiagnostics(params, limit);
 }
 
 export async function getConversions(params: URLSearchParams) {
@@ -653,13 +686,8 @@ export async function getMeasurementTruth(params: URLSearchParams) {
     SELECT 'conversions', COUNT(*), MIN(conversion_date), MAX(conversion_date)
     FROM conversions_norm
     UNION ALL
-    SELECT 'google_ad_data', COUNT(*), MIN(data_date), MAX(data_date)
+    SELECT 'google_ads_native_media', COUNT(*), MIN(data_date), MAX(data_date)
     FROM media_daily_norm
-    WHERE platform_id = 'google'
-    UNION ALL
-    SELECT 'bing_ad_data', COUNT(*), MIN(data_date), MAX(data_date)
-    FROM media_daily_norm
-    WHERE platform_id = 'bing'
   `;
 
   const coverageSql = `
@@ -721,11 +749,12 @@ export async function getMeasurementTruth(params: URLSearchParams) {
     ORDER BY conversions_in_scope DESC
   `;
 
-  const [summary, taxonomy, inventory, coverage] = await Promise.all([
+  const [summary, taxonomy, inventory, coverage, googleTransferInventory] = await Promise.all([
     runBigQuery<Record<string, unknown>>(sql, filters.params).then((rows) => rows[0]),
     runBigQuery(taxonomySql, filters.params),
     runBigQuery(inventorySql),
     runBigQuery(coverageSql, filters.params),
+    getGoogleTransferInventory(),
   ]);
 
   const warnings: string[] = [];
@@ -768,7 +797,22 @@ export async function getMeasurementTruth(params: URLSearchParams) {
     }
   }
 
-  return { summary, taxonomy, inventory, coverage, warnings };
+  const clickInventory = (googleTransferInventory as Record<string, unknown>[]).find(
+    (row) => String(row.table_name) === "ads_ClickStats",
+  );
+  if (clickInventory) {
+    warnings.push(
+      `Google exact click-level attribution is available from ${String(clickInventory.min_date)} to ${String(clickInventory.max_date)} via the GoogleAds transfer dataset.`,
+    );
+  }
+
+  return {
+    summary,
+    taxonomy,
+    inventory: [...inventory, ...(googleTransferInventory as Record<string, unknown>[])],
+    coverage,
+    warnings,
+  };
 }
 
 export async function getPartners(params: URLSearchParams) {
@@ -870,6 +914,16 @@ export async function getCycleTime(params: URLSearchParams, groupBy: string) {
 }
 
 export async function getKeywordOpportunities(params: URLSearchParams, limit = 25) {
+  const googleRows = await getGoogleKeywordOpportunities(params, limit * 8);
+  const platformParam = params.get("platform")?.toLowerCase();
+  const includeBing = !platformParam || platformParam === "bing";
+
+  if (!includeBing) {
+    return (googleRows as Record<string, unknown>[])
+      .sort((a, b) => Number(b.purchase_profit || 0) - Number(a.purchase_profit || 0))
+      .slice(0, limit);
+  }
+
   const visitFilters = buildAttributionFilters({ params, alias: "v", dateField: "entered_at_date" });
   const joinedFilters = buildAttributionFilters({ params, alias: "j", dateField: "entered_at_date" });
   const mediaFilters = buildAttributionFilters({ params, alias: "m", dateField: "data_date" });
@@ -885,7 +939,7 @@ export async function getKeywordOpportunities(params: URLSearchParams, limit = 2
         COUNT(*) AS visit_count
       FROM visits_norm v
       ${visitFilters.where ? `${visitFilters.where} AND` : "WHERE"}
-        v.platform_id IN ('bing', 'google')
+        v.platform_id = 'bing'
         AND v.keyword IS NOT NULL
         AND v.keyword != 'unknown'
       GROUP BY v.platform_id, v.entered_at_date, v.campaign_id, v.keyword
@@ -900,7 +954,7 @@ export async function getKeywordOpportunities(params: URLSearchParams, limit = 2
         COUNT(*) AS visit_count
       FROM visits_norm v
       ${visitFilters.where ? `${visitFilters.where} AND` : "WHERE"}
-        v.platform_id IN ('bing', 'google')
+        v.platform_id = 'bing'
         AND v.keyword IS NOT NULL
         AND v.keyword != 'unknown'
       GROUP BY v.platform_id, v.entered_at_date, v.campaign_id, v.keyword, v.landing_page_path
@@ -938,7 +992,7 @@ export async function getKeywordOpportunities(params: URLSearchParams, limit = 2
         ROUND(APPROX_QUANTILES(CASE WHEN j.conversion_class = 'purchase' THEN j.cycle_seconds END, 100)[OFFSET(50)] / 60, 1) AS p50_purchase_cycle_minutes
       FROM joined j
       ${joinedFilters.where ? `${joinedFilters.where} AND` : "WHERE"}
-        j.platform_id IN ('bing', 'google')
+        j.platform_id = 'bing'
         AND j.keyword IS NOT NULL
         AND j.keyword != 'unknown'
       GROUP BY j.platform_id, j.entered_at_date, j.campaign_id, j.keyword
@@ -954,7 +1008,7 @@ export async function getKeywordOpportunities(params: URLSearchParams, limit = 2
         SUM(m.clicks) AS clicks
       FROM media_daily_norm m
       ${mediaFilters.where ? `${mediaFilters.where} AND` : "WHERE"}
-        m.platform_id IN ('bing', 'google')
+        m.platform_id = 'bing'
       GROUP BY m.platform_id, m.data_date, m.campaign_id
     ),
     keyword_day AS (
@@ -1067,22 +1121,27 @@ export async function getKeywordOpportunities(params: URLSearchParams, limit = 2
       END AS diagnosis
     FROM keyword_rollup
     ORDER BY purchase_profit DESC, net_purchases DESC, estimated_spend DESC
-    LIMIT ${limit}
+    LIMIT ${limit * 8}
   `;
 
-  return runBigQuery(sql, {
+  const bingRows = await runBigQuery<Record<string, unknown>>(sql, {
     ...visitFilters.params,
     ...joinedFilters.params,
     ...mediaFilters.params,
   });
+
+  return [...(googleRows as Record<string, unknown>[]), ...bingRows]
+    .sort((a, b) => Number(b.purchase_profit || 0) - Number(a.purchase_profit || 0))
+    .slice(0, limit);
 }
 
 export async function getOptimizationFlow(params: URLSearchParams) {
-  const [truth, keywordRows, landingPages, partners] = await Promise.all([
+  const [truth, keywordRows, landingPages, partners, googleAdCopy] = await Promise.all([
     getMeasurementTruth(params),
     getKeywordOpportunities(params, 500),
     getLandingPages(params, 200),
     getPartners(params),
+    getGoogleAdCopyDiagnostics(params, 120),
   ]);
 
   const rows = (keywordRows as Record<string, unknown>[]).map((row) => ({
@@ -1104,6 +1163,28 @@ export async function getOptimizationFlow(params: URLSearchParams) {
     profit_gap_to_break_even: Number(row.profit_gap_to_break_even || 0),
     diagnosis: String(row.diagnosis || ""),
     spend_confidence: String(row.spend_confidence || "unknown"),
+    click_to_visit_match_pct: row.click_to_visit_match_pct == null ? null : Number(row.click_to_visit_match_pct),
+    keyword_match_type: row.keyword_match_type ? String(row.keyword_match_type) : null,
+    keyword_status: row.keyword_status ? String(row.keyword_status) : null,
+    quality_score: row.quality_score ? String(row.quality_score) : null,
+  }));
+
+  const googleAds = (googleAdCopy as Record<string, unknown>[]).map((row) => ({
+    ad_id: String(row.ad_id || "unknown"),
+    campaign_name: String(row.campaign_name || "unknown"),
+    ad_name: row.ad_name ? String(row.ad_name) : null,
+    ad_type: String(row.ad_type || "unknown"),
+    ad_strength: row.ad_strength ? String(row.ad_strength) : null,
+    approval_status: row.approval_status ? String(row.approval_status) : null,
+    ad_status: row.ad_status ? String(row.ad_status) : null,
+    spend: Number(row.spend || 0),
+    clicks: Number(row.clicks || 0),
+    impressions: Number(row.impressions || 0),
+    matched_click_visits: Number(row.matched_click_visits || 0),
+    add_to_carts: Number(row.add_to_carts || 0),
+    net_purchases: Number(row.net_purchases || 0),
+    purchase_profit: Number(row.purchase_profit || 0),
+    purchase_roi_pct: row.purchase_roi_pct == null ? null : Number(row.purchase_roi_pct),
   }));
 
   const winningKeywords = rows
@@ -1148,7 +1229,7 @@ export async function getOptimizationFlow(params: URLSearchParams) {
   const topWinner = winningKeywords[0];
   if (topWinner) {
     recommendations.push(
-      `Scale ${topWinner.keyword} on ${topWinner.platform} where it wins in ${topWinner.top_campaign}; estimated purchase profit is $${topWinner.purchase_profit.toFixed(0)} with ${topWinner.net_purchases} net purchases.`,
+      `Scale ${topWinner.keyword} on ${topWinner.platform} where it wins in ${topWinner.top_campaign}; purchase profit is $${topWinner.purchase_profit.toFixed(0)} with ${topWinner.net_purchases} net purchases.`,
     );
   }
   const topWaste = wastedKeywords[0];
@@ -1166,21 +1247,39 @@ export async function getOptimizationFlow(params: URLSearchParams) {
   if (partnerAlerts.some((row) => row.partner === "Sprout")) {
     recommendations.push("Keep Sprout out of growth decisions until reversals are fixed; it is currently destroying purchase economics.");
   }
+  const weakGoogleAd = googleAds
+    .filter((row) => row.spend >= 250 && row.net_purchases <= 0)
+    .sort((a, b) => b.spend - a.spend)[0];
+  if (weakGoogleAd) {
+    recommendations.push(
+      `Rewrite or pause the weak Google RSA in ${weakGoogleAd.campaign_name}; it spent about $${weakGoogleAd.spend.toFixed(0)} with no net purchases.`,
+    );
+  }
+  const strongGoogleAd = googleAds
+    .filter((row) => row.net_purchases > 0 && row.purchase_profit > 0)
+    .sort((a, b) => b.purchase_profit - a.purchase_profit)[0];
+  if (strongGoogleAd) {
+    recommendations.push(
+      `Use ${strongGoogleAd.campaign_name} as a copy donor on Google; this RSA is positive on purchase profit and already has usable in-market proof.`,
+    );
+  }
 
   return {
     flow: [
       "1. Measurement truth",
       "2. Keyword economics",
-      "3. Landing-page mismatch",
-      "4. Partner risk",
-      "5. Action recommendations",
+      "3. Google click + ad copy layer",
+      "4. Landing-page mismatch",
+      "5. Partner risk",
+      "6. Action recommendations",
     ],
     assumptions: {
       purchase_value_usd: PURCHASE_VALUE_USD,
       add_to_cart_share_of_purchase: ADD_TO_CART_SHARE_OF_PURCHASE,
       add_to_cart_proxy_value_usd: ADD_TO_CART_VALUE_USD,
-      spend_allocation_method: "Campaign-day spend allocated to keyword by share of visits within the same platform/date/campaign.",
-      spend_confidence: "inferred_campaign_day_spend",
+      spend_allocation_method:
+        "Google uses exact keyword-day spend from the GoogleAds transfer. Bing still allocates campaign-day spend to keyword by share of visits within the same platform/date/campaign.",
+      spend_confidence: "hybrid_exact_google__inferred_bing",
     },
     measurement_truth: truth,
     summary: {
@@ -1192,9 +1291,14 @@ export async function getOptimizationFlow(params: URLSearchParams) {
       proxy_profit: Number(proxyProfit.toFixed(2)),
       profitable_keyword_count: winningKeywords.length,
       waste_keyword_count: wastedKeywords.length,
+      google_rsa_ads_analyzed: googleAds.length,
     },
     winning_keywords: winningKeywords,
     wasted_keywords: wastedKeywords,
+    google_ad_copy_alerts: googleAds
+      .filter((row) => row.spend >= 250)
+      .sort((a, b) => a.purchase_profit - b.purchase_profit)
+      .slice(0, 8),
     landing_page_alerts: landingPageAlerts,
     partner_alerts: partnerAlerts,
     recommendations,

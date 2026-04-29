@@ -59,6 +59,7 @@ type CopyIntelligence = {
     waste_theme_count: number;
     landing_page_alert_count: number;
     recommendation_count: number;
+    google_rsa_ad_count: number;
   };
   caveats: string[];
   winning_themes: ThemeRow[];
@@ -70,6 +71,46 @@ type CopyIntelligence = {
     net_purchases: number;
     purchase_rate: number | null;
     modeled_value_usd: number;
+  }>;
+  winning_ads: Array<{
+    ad_id: string;
+    campaign_name: string;
+    ad_name: string | null;
+    ad_strength: string | null;
+    approval_status: string | null;
+    ad_status: string | null;
+    spend: number;
+    clicks: number;
+    impressions: number;
+    matched_click_visits: number;
+    add_to_carts: number;
+    net_purchases: number;
+    purchase_profit: number;
+    purchase_roi_pct: number | null;
+    sample_keywords: string[];
+    sample_landing_pages: string[];
+    headlines: Array<{ text: string; label: string; pinnedField: string | null }>;
+    descriptions: Array<{ text: string; label: string; pinnedField: string | null }>;
+  }>;
+  weak_ads: Array<{
+    ad_id: string;
+    campaign_name: string;
+    ad_name: string | null;
+    ad_strength: string | null;
+    approval_status: string | null;
+    ad_status: string | null;
+    spend: number;
+    clicks: number;
+    impressions: number;
+    matched_click_visits: number;
+    add_to_carts: number;
+    net_purchases: number;
+    purchase_profit: number;
+    purchase_roi_pct: number | null;
+    sample_keywords: string[];
+    sample_landing_pages: string[];
+    headlines: Array<{ text: string; label: string; pinnedField: string | null }>;
+    descriptions: Array<{ text: string; label: string; pinnedField: string | null }>;
   }>;
   copy_ideas: CopyIdea[];
   recommendations: string[];
@@ -132,7 +173,7 @@ export default function CopyLabContent() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Net Purchases" value={copyData.summary.in_scope_net_purchases.toLocaleString()} color="green" />
         <StatCard label="Join Rate" value={`${copyData.summary.join_rate_pct}%`} sub="conversion -> visit truth" color="blue" />
-        <StatCard label="Winning Themes" value={copyData.summary.winning_theme_count} sub="copy angles worth scaling" color="purple" />
+        <StatCard label="Google RSAs" value={copyData.summary.google_rsa_ad_count} sub="ads with native copy data" color="purple" />
         <StatCard label="Reachable Sources" value={`${researchData.summary.reachable_source_count}/${researchData.summary.source_count}`} sub="live external research" color="orange" />
       </div>
 
@@ -167,6 +208,90 @@ export default function CopyLabContent() {
               <div className="text-gray-500 text-xs uppercase tracking-wider">Compounded mentions</div>
               <div className="text-white text-xl font-semibold mt-1">{researchData.market_signals.compounded_mentions}</div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div className="border-b border-gray-800 px-4 py-3 text-sm font-medium text-gray-300">Winning Google Ads</div>
+          <div className="divide-y divide-gray-800/60">
+            {copyData.winning_ads.map((ad) => (
+              <div key={`win-${ad.ad_id}`} className="p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-medium text-white">{ad.campaign_name}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Strength: {ad.ad_strength || "unknown"} · Approval: {ad.approval_status || "unknown"}
+                    </div>
+                    {ad.sample_keywords.length > 0 && (
+                      <div className="text-xs text-cyan-300 mt-1">Keywords: {ad.sample_keywords.join(" · ")}</div>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-emerald-300 font-medium">${Math.round(ad.purchase_profit).toLocaleString()}</div>
+                    <div className="text-xs text-gray-500">{ad.net_purchases} purchases</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-2 mt-3">
+                  {ad.headlines.slice(0, 3).map((headline) => (
+                    <div key={`${ad.ad_id}-${headline.text}`} className="rounded-lg border border-gray-800 bg-gray-950 px-3 py-2">
+                      <div className="text-xs text-gray-500 mb-1">
+                        Headline · {headline.label}{headline.pinnedField ? ` · ${headline.pinnedField}` : ""}
+                      </div>
+                      <div className="text-sm text-white">{headline.text}</div>
+                    </div>
+                  ))}
+                  {ad.descriptions.slice(0, 1).map((description) => (
+                    <div key={`${ad.ad_id}-${description.text}`} className="rounded-lg border border-gray-800 bg-gray-950 px-3 py-2">
+                      <div className="text-xs text-gray-500 mb-1">Description · {description.label}</div>
+                      <div className="text-sm text-gray-200">{description.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div className="border-b border-gray-800 px-4 py-3 text-sm font-medium text-gray-300">Ads To Rewrite / Pause</div>
+          <div className="divide-y divide-gray-800/60">
+            {copyData.weak_ads.map((ad) => (
+              <div key={`weak-${ad.ad_id}`} className="p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-medium text-white">{ad.campaign_name}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Strength: {ad.ad_strength || "unknown"} · Approval: {ad.approval_status || "unknown"}
+                    </div>
+                    {ad.sample_keywords.length > 0 && (
+                      <div className="text-xs text-amber-300 mt-1">Keywords: {ad.sample_keywords.join(" · ")}</div>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-rose-300 font-medium">${Math.round(ad.spend).toLocaleString()}</div>
+                    <div className="text-xs text-gray-500">{ad.net_purchases} purchases</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-2 mt-3">
+                  {ad.headlines.slice(0, 2).map((headline) => (
+                    <div key={`${ad.ad_id}-${headline.text}`} className="rounded-lg border border-gray-800 bg-gray-950 px-3 py-2">
+                      <div className="text-xs text-gray-500 mb-1">
+                        Headline · {headline.label}{headline.pinnedField ? ` · ${headline.pinnedField}` : ""}
+                      </div>
+                      <div className="text-sm text-white">{headline.text}</div>
+                    </div>
+                  ))}
+                  {ad.descriptions.slice(0, 1).map((description) => (
+                    <div key={`${ad.ad_id}-${description.text}`} className="rounded-lg border border-gray-800 bg-gray-950 px-3 py-2">
+                      <div className="text-xs text-gray-500 mb-1">Description · {description.label}</div>
+                      <div className="text-sm text-gray-200">{description.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>

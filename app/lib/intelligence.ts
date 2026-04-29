@@ -1,10 +1,11 @@
 import {
   getCampaigns,
-  getKeywords,
+  getKeywordOpportunities,
   getLandingPages,
   getMeasurementTruth,
   getPartners,
 } from "@/lib/weight-agent";
+import { getGoogleAdCopyDiagnostics } from "@/lib/google-ads-transfer";
 
 type ThemeDef = {
   slug: string;
@@ -318,23 +319,75 @@ function buildDescriptionIdeas(theme: ThemeAggregate) {
   }));
 }
 
+type ParsedAdAsset = {
+  text: string;
+  assetPerformanceLabel?: string;
+  pinnedField?: string;
+};
+
+function parseAdAssets(raw: unknown): ParsedAdAsset[] {
+  if (typeof raw !== "string" || !raw.trim()) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((item) => ({
+        text: typeof item.text === "string" ? item.text : "",
+        assetPerformanceLabel:
+          typeof item.assetPerformanceLabel === "string" ? item.assetPerformanceLabel : undefined,
+        pinnedField: typeof item.pinnedField === "string" ? item.pinnedField : undefined,
+      }))
+      .filter((item) => item.text);
+  } catch {
+    return [];
+  }
+}
+
+function compactAssets(raw: unknown, limit = 4) {
+  return parseAdAssets(raw)
+    .slice(0, limit)
+    .map((item) => ({
+      text: item.text,
+      label: item.assetPerformanceLabel || "UNKNOWN",
+      pinnedField: item.pinnedField || null,
+    }));
+}
+
+type GeneratedCopyIdea = {
+  theme: string;
+  asset_type: string;
+  text: string;
+  why: string;
+  compliance_note: string;
+};
+
 export async function getCopyIntelligence(params: URLSearchParams) {
-  const [keywords, campaigns, landingPages, partners, truth] = await Promise.all([
-    getKeywords(params, 500),
+  const [keywords, campaigns, landingPages, partners, truth, googleAdRows] = await Promise.all([
+    getKeywordOpportunities(params, 500),
     getCampaigns(params),
     getLandingPages(params, 200),
     getPartners(params),
     getMeasurementTruth(params),
+    getGoogleAdCopyDiagnostics(params, 150),
   ]);
 
   const keywordThemes = aggregateRows(
     keywords as Record<string, unknown>[],
     (row) => String(row.keyword || "unknown"),
     {
-      totalEvents: "total_events",
-      quizStarts: "quiz_starts",
-      purchases: "purchases",
-      revenue: "revenue",
+      totalEvents: "visits",
+      quizStarts: "visits",
+      purchases: "net_purchases",
+      revenue: "purchase_revenue",
+      spend: "estimated_spend",
+      impressions: "estimated_impressions",
+      clicks: "estimated_clicks",
     },
   );
 
@@ -398,6 +451,78 @@ export async function getCopyIntelligence(params: URLSearchParams) {
     .flatMap((theme) => [...buildHeadlineIdeas(theme), ...buildDescriptionIdeas(theme)])
     .slice(0, 12);
 
+  const googleAds = (googleAdRows as Record<string, unknown>[])
+    .map((row) => ({
+      ad_id: String(row.ad_id || "unknown"),
+      campaign_name: String(row.campaign_name || "unknown"),
+      ad_name: row.ad_name ? String(row.ad_name) : null,
+      ad_strength: row.ad_strength ? String(row.ad_strength) : null,
+      approval_status: row.approval_status ? String(row.approval_status) : null,
+      ad_status: row.ad_status ? String(row.ad_status) : null,
+      spend: toNumber(row.spend as NumericLike),
+      clicks: toNumber(row.clicks as NumericLike),
+      impressions: toNumber(row.impressions as NumericLike),
+      matched_click_visits: toNumber(row.matched_click_visits as NumericLike),
+      add_to_carts: toNumber(row.add_to_carts as NumericLike),
+      net_purchases: toNumber(row.net_purchases as NumericLike),
+      purchase_profit: toNumber(row.purchase_profit as NumericLike),
+      purchase_roi_pct:
+        row.purchase_roi_pct == null ? null : toNumber(row.purchase_roi_pct as NumericLike),
+      sample_keywords:
+        typeof row.sample_keywords === "string" && row.sample_keywords.trim()
+          ? row.sample_keywords.split(" | ").map((value) => value.trim()).filter(Boolean)
+          : [],
+      sample_landing_pages:
+        typeof row.sample_landing_pages === "string" && row.sample_landing_pages.trim()
+          ? row.sample_landing_pages.split(" | ").map((value) => value.trim()).filter(Boolean)
+          : [],
+      headlines: compactAssets(row.headlines_json),
+      descriptions: compactAssets(row.descriptions_json),
+    }))
+    .filter((row) => row.spend > 0);
+
+  const winningAds = googleAds
+    .filter((row) => row.net_purchases > 0 && row.purchase_profit > 0)
+    .sort((a, b) => b.purchase_profit - a.purchase_profit || b.net_purchases - a.net_purchases)
+    .slice(0, 8);
+
+  const weakAds = googleAds
+    .filter((row) => row.spend >= 250 && (row.net_purchases <= 0 || row.purchase_profit < 0))
+    .sort((a, b) => b.spend - a.spend || a.purchase_profit - b.purchase_profit)
+    .slice(0, 8);
+
+  const actionableCopy = [...winningAds.slice(0, 2), ...weakAds.slice(0, 2)].flatMap((ad) => {
+    const strongestHeadline = ad.headlines[0];
+    const strongestDescription = ad.descriptions[0];
+
+    return [
+      strongestHeadline
+        ? {
+            theme: ad.campaign_name,
+            asset_type: "headline",
+            text: strongestHeadline.text,
+            why:
+              ad.purchase_profit > 0
+                ? `Live Google RSA winner in ${ad.campaign_name} with ${ad.net_purchases} net purchases and ${ad.ad_strength || "unknown"} strength.`
+                : `Current live headline in a weak ad; use it as the first rewrite target in ${ad.campaign_name}.`,
+            compliance_note: `Google label: ${strongestHeadline.label}. Approval: ${ad.approval_status || "unknown"}.`,
+          }
+        : null,
+      strongestDescription
+        ? {
+            theme: ad.campaign_name,
+            asset_type: "description",
+            text: strongestDescription.text,
+            why:
+              ad.purchase_profit > 0
+                ? `Supported by live purchase profit in Google RSA traffic.`
+                : `This description is attached to an ad losing money; rewrite for tighter partner/value specificity.`,
+            compliance_note: `Google label: ${strongestDescription.label}. Approval: ${ad.approval_status || "unknown"}.`,
+          }
+        : null,
+    ].filter(Boolean);
+  }) as GeneratedCopyIdea[];
+
   const partnerLeaders = (partners as Record<string, unknown>[])
     .map((row) => ({
       partner: String(row.partner || "unknown"),
@@ -420,6 +545,18 @@ export async function getCopyIntelligence(params: URLSearchParams) {
   if (partnerLeaders.some((row) => row.partner === "Sprout" && row.net_purchases < 0)) {
     recommendations.push("Treat Sprout as a risk queue, not a growth queue, until reversals are understood and contained.");
   }
+  if (weakAds.length > 0) {
+    const weakAd = weakAds[0];
+    recommendations.push(
+      `Rewrite or pause the weak Google RSA in ${weakAd.campaign_name}; it spent $${Math.round(weakAd.spend).toLocaleString()} with ${weakAd.net_purchases} net purchases.`,
+    );
+  }
+  if (winningAds.length > 0) {
+    const strongAd = winningAds[0];
+    recommendations.push(
+      `Clone the winning Google RSA pattern from ${strongAd.campaign_name}; it produced ${strongAd.net_purchases} net purchases with ${strongAd.ad_strength || "unknown"} strength.`,
+    );
+  }
 
   return {
     summary: {
@@ -429,19 +566,22 @@ export async function getCopyIntelligence(params: URLSearchParams) {
       waste_theme_count: fallbackWasteThemes.length,
       landing_page_alert_count: landingPageAlerts.length,
       recommendation_count: recommendations.length,
+      google_rsa_ad_count: googleAds.length,
     },
     caveats: [
-      "Native ad asset/headline/description tables are not available in BigQuery yet.",
-      "This is theme-level copy intelligence built from campaigns, keywords, landing pages, and partner outcomes.",
-      "Spend-based judgments are strongest when a filtered date range overlaps the paid-media tables.",
+      "Google now exposes native RSA headlines, descriptions, ad strength, and policy context through the GoogleAds transfer dataset.",
+      "Bing is still theme-level because there is no matching rich Bing copy dataset in BigQuery yet.",
+      "Google keyword economics are exact at the keyword-day level; Bing keyword economics remain campaign-day spend allocations by visit share.",
       ...(truth.warnings || []),
     ],
     winning_themes: winningThemes,
     waste_themes: fallbackWasteThemes,
     keyword_theme_leaders: keywordThemes.slice(0, 10),
+    winning_ads: winningAds,
+    weak_ads: weakAds,
     landing_page_alerts: landingPageAlerts,
     partner_leaders: partnerLeaders,
-    copy_ideas: copyIdeas,
+    copy_ideas: actionableCopy.length > 0 ? actionableCopy.slice(0, 12) : copyIdeas,
     recommendations,
   };
 }

@@ -51,9 +51,19 @@ type OptimizationFlow = {
     proxy_profit: number;
     profitable_keyword_count: number;
     waste_keyword_count: number;
+    google_rsa_ads_analyzed: number;
   };
   winning_keywords: KeywordRow[];
   wasted_keywords: KeywordRow[];
+  google_ad_copy_alerts: Array<{
+    ad_id: string;
+    campaign_name: string;
+    ad_strength: string | null;
+    approval_status: string | null;
+    spend: number;
+    net_purchases: number;
+    purchase_profit: number;
+  }>;
   landing_page_alerts: LandingAlert[];
   recommendations: string[];
 };
@@ -153,8 +163,8 @@ export default function DashboardContent() {
         />
         <StatCard
           label="Spend Confidence"
-          value="Inferred"
-          sub="Campaign-day spend allocated by visit share"
+          value="Hybrid"
+          sub="Exact Google + inferred Bing"
           color="default"
         />
       </div>
@@ -190,6 +200,31 @@ export default function DashboardContent() {
               Add to cart is shown only as a weighted proxy at {Math.round(data.assumptions.add_to_cart_share_of_purchase * 100)}% of purchase value.
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
+        <div className="text-sm font-medium text-gray-300 mb-3">Google Ad Copy Alerts</div>
+        <div className="space-y-3">
+          {data.google_ad_copy_alerts.map((row) => (
+            <div key={row.ad_id} className="rounded-lg border border-gray-800 bg-gray-950 px-3 py-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-sm text-white font-medium">{row.campaign_name}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Strength: {row.ad_strength || "unknown"} · Approval: {row.approval_status || "unknown"}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-rose-300 font-medium">{money(row.spend)}</div>
+                  <div className="text-xs text-gray-500">{row.net_purchases} purchases</div>
+                </div>
+              </div>
+              <div className="text-sm text-amber-200 mt-2">
+                Purchase profit: {money(row.purchase_profit)}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
