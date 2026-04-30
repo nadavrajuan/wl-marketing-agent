@@ -8,6 +8,25 @@ type Option = {
   label: string;
 };
 
+type MatrixRow = {
+  channel: string;
+  cost: number;
+  payout: number;
+  nmr: number;
+  projected_nmr: number;
+  roas_pct: number | null;
+  clicks: number;
+  clickouts: number;
+  cpco: number | null;
+  lp_ctr_pct: number | null;
+  step1: number;
+  cost_per_step1: number | null;
+  step2: number;
+  cost_per_step2: number | null;
+  step3: number;
+  cost_per_step3: number | null;
+};
+
 type DashboardResponse = {
   filters: {
     account: string;
@@ -26,6 +45,7 @@ type DashboardResponse = {
     cost: number;
     payout: number;
     nmr: number;
+    projected_nmr: number;
     roas_pct: number | null;
     lp_ctr_pct: number | null;
     clicks: number;
@@ -40,6 +60,7 @@ type DashboardResponse = {
     cpa: number | null;
     quiz_starts: number;
   };
+  channel_breakdown: MatrixRow[];
 };
 
 function money(value: number | null | undefined, digits = 0) {
@@ -63,7 +84,70 @@ function pct(value: number | null | undefined, digits = 1) {
   return `${Number(value).toFixed(digits)}%`;
 }
 
-function MiniMetric({
+function formatDate(value: string) {
+  if (!value) return "—";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function metricTone(tone: "orange" | "green" | "blue" | "purple" | "default") {
+  switch (tone) {
+    case "orange":
+      return "border-orange-500/40 bg-orange-500/10";
+    case "green":
+      return "border-emerald-500/40 bg-emerald-500/10";
+    case "blue":
+      return "border-sky-500/40 bg-sky-500/10";
+    case "purple":
+      return "border-violet-500/40 bg-violet-500/10";
+    default:
+      return "border-gray-800 bg-gray-900";
+  }
+}
+
+function FilterField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  tone: "orange" | "green" | "blue" | "purple" | "default";
+}) {
+  return (
+    <div className={`rounded-2xl border p-5 ${metricTone(tone)}`}>
+      <div className="text-xs uppercase tracking-[0.18em] text-gray-400">{label}</div>
+      <div className="mt-3 text-3xl font-semibold tracking-tight text-white">{value}</div>
+      <div className="mt-2 text-sm text-gray-500">{sub}</div>
+    </div>
+  );
+}
+
+function PairMetricCard({
   leftValue,
   leftLabel,
   rightValue,
@@ -75,14 +159,14 @@ function MiniMetric({
   rightLabel: string;
 }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
-      <div className="grid grid-cols-2 gap-4 divide-x divide-gray-200">
-        <div className="pr-4 text-center">
-          <div className="text-4xl font-semibold tracking-tight text-gray-900">{leftValue}</div>
+    <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="border-r border-gray-800 pr-4">
+          <div className="text-2xl font-semibold tracking-tight text-white">{leftValue}</div>
           <div className="mt-1 text-sm text-gray-500">{leftLabel}</div>
         </div>
-        <div className="pl-4 text-center">
-          <div className="text-4xl font-semibold tracking-tight text-gray-900">{rightValue}</div>
+        <div className="pl-1">
+          <div className="text-2xl font-semibold tracking-tight text-white">{rightValue}</div>
           <div className="mt-1 text-sm text-gray-500">{rightLabel}</div>
         </div>
       </div>
@@ -90,19 +174,9 @@ function MiniMetric({
   );
 }
 
-function BigMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-2xl bg-[linear-gradient(180deg,#7bd43d_0%,#6fca39_100%)] px-6 py-6 text-center shadow-[0_10px_25px_rgba(111,202,57,0.28)]">
-      <div className="text-5xl font-semibold tracking-tight text-white">{value}</div>
-      <div className="mt-2 text-sm uppercase tracking-[0.18em] text-lime-50/90">{label}</div>
-    </div>
-  );
+function channelLabel(value: string) {
+  if (value === "total") return "Total";
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 export default function DataDashboardContent() {
@@ -125,6 +199,7 @@ export default function DataDashboardContent() {
       })
       .then((payload: DashboardResponse) => {
         setData(payload);
+        setError(null);
         setLoading(false);
       })
       .catch((err) => {
@@ -164,60 +239,66 @@ export default function DataDashboardContent() {
   if (!data) return null;
 
   return (
-    <div className="rounded-[28px] bg-[linear-gradient(180deg,#f4f4f2_0%,#ececea_100%)] p-6 text-gray-900 shadow-[0_18px_50px_rgba(15,23,42,0.16)]">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-4">
-            <div className="rounded-full border border-gray-300 bg-white px-3 py-2 text-xl shadow-sm">◀</div>
-            <div>
-              <div className="text-[15px] font-medium uppercase tracking-[0.25em] text-lime-600">WL Marketing</div>
-              <h1 className="text-5xl font-semibold tracking-tight text-gray-900">Data Dashboard</h1>
-              <p className="mt-1 text-sm text-gray-500">Analyze by date, channel, campaign, device, and partner.</p>
-            </div>
-          </div>
+          <div className="text-xs font-medium uppercase tracking-[0.28em] text-cyan-300">WL Marketing</div>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-white">Data Dashboard</h1>
+          <p className="mt-2 max-w-3xl text-sm text-gray-400">
+            A channel-first control room for spend, payout, partner clickouts, and purchase efficiency across the full warehouse window.
+          </p>
         </div>
-        <div className="rounded-2xl bg-white px-4 py-3 text-right shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-          <div className="text-xs uppercase tracking-[0.2em] text-gray-400">Latest Data</div>
-          <div className="mt-1 text-2xl font-semibold text-gray-900">
-            {data.latest_data_date ? new Date(data.latest_data_date).toLocaleDateString() : "—"}
+        <div className="rounded-2xl border border-gray-800 bg-gray-900 px-4 py-3">
+          <div className="text-xs uppercase tracking-[0.18em] text-gray-500">Latest Data</div>
+          <div className="mt-1 text-lg font-semibold text-white">{formatDate(data.latest_data_date)}</div>
+          <div className="mt-1 text-xs text-gray-500">
+            Window: {formatDate(activeDates.from)} to {formatDate(activeDates.to)}
           </div>
         </div>
       </div>
 
-      <div className="mb-5 rounded-[24px] border border-gray-200 bg-white px-5 py-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
+      <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">Account</label>
+            <div className="text-sm font-medium text-white">Filters</div>
+            <div className="mt-1 text-sm text-gray-500">
+              Slice the same warehouse-backed metrics by media channel, campaign, device, and partner.
+            </div>
+          </div>
+          <div className="rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-xs text-gray-400">
+            Account: <span className="text-gray-200">{data.filters.account}</span>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
+          <FilterField label="Account">
             <select
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 shadow-inner outline-none"
+              className="w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2.5 text-sm text-gray-400 outline-none"
               value={data.filters.account}
               disabled
             >
               <option>{data.filters.account}</option>
             </select>
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">Date From</label>
+          </FilterField>
+          <FilterField label="Date From">
             <input
               type="date"
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 shadow-inner outline-none"
+              className="w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2.5 text-sm text-gray-200 outline-none"
               value={activeDates.from}
               onChange={(event) => setFilter("date_from", event.target.value)}
             />
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">Date To</label>
+          </FilterField>
+          <FilterField label="Date To">
             <input
               type="date"
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 shadow-inner outline-none"
+              className="w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2.5 text-sm text-gray-200 outline-none"
               value={activeDates.to}
               onChange={(event) => setFilter("date_to", event.target.value)}
             />
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">Channel</label>
+          </FilterField>
+          <FilterField label="Channel">
             <select
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 shadow-inner outline-none"
+              className="w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2.5 text-sm text-gray-200 outline-none"
               value={searchParams.get("channel") || ""}
               onChange={(event) => setFilter("channel", event.target.value)}
             >
@@ -228,11 +309,10 @@ export default function DataDashboardContent() {
                 </option>
               ))}
             </select>
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">Campaign</label>
+          </FilterField>
+          <FilterField label="Campaign">
             <select
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 shadow-inner outline-none"
+              className="w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2.5 text-sm text-gray-200 outline-none"
               value={searchParams.get("campaign") || ""}
               onChange={(event) => setFilter("campaign", event.target.value)}
             >
@@ -243,11 +323,10 @@ export default function DataDashboardContent() {
                 </option>
               ))}
             </select>
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">Campaign Type</label>
+          </FilterField>
+          <FilterField label="Campaign Type">
             <select
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 shadow-inner outline-none"
+              className="w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2.5 text-sm text-gray-200 outline-none"
               value={searchParams.get("campaign_type") || ""}
               onChange={(event) => setFilter("campaign_type", event.target.value)}
             >
@@ -258,12 +337,11 @@ export default function DataDashboardContent() {
                 </option>
               ))}
             </select>
-          </div>
+          </FilterField>
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">Device</label>
+            <FilterField label="Device">
               <select
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 shadow-inner outline-none"
+                className="w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2.5 text-sm text-gray-200 outline-none"
                 value={searchParams.get("device") || ""}
                 onChange={(event) => setFilter("device", event.target.value)}
               >
@@ -274,11 +352,10 @@ export default function DataDashboardContent() {
                   </option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">Partner</label>
+            </FilterField>
+            <FilterField label="Partner">
               <select
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 shadow-inner outline-none"
+                className="w-full rounded-xl border border-gray-800 bg-gray-950 px-3 py-2.5 text-sm text-gray-200 outline-none"
                 value={searchParams.get("partner") || ""}
                 onChange={(event) => setFilter("partner", event.target.value)}
               >
@@ -289,50 +366,159 @@ export default function DataDashboardContent() {
                   </option>
                 ))}
               </select>
-            </div>
+            </FilterField>
           </div>
         </div>
       </div>
 
-      <div className="mb-5 grid gap-4 xl:grid-cols-5">
-        <BigMetric label="Cost" value={number(data.metrics.cost)} />
-        <BigMetric label="Payout" value={number(data.metrics.payout)} />
-        <BigMetric label="NMR" value={number(data.metrics.nmr, 1)} />
-        <BigMetric label="ROAS" value={pct(data.metrics.roas_pct)} />
-        <BigMetric label="LP CTR" value={pct(data.metrics.lp_ctr_pct)} />
+      <div className="grid gap-4 xl:grid-cols-5">
+        <MetricCard
+          label="Cost"
+          value={money(data.metrics.cost)}
+          sub="Raw Google + Bing media cost"
+          tone="orange"
+        />
+        <MetricCard
+          label="Payout"
+          value={money(data.metrics.payout)}
+          sub="Net purchases × $390"
+          tone="green"
+        />
+        <MetricCard
+          label="NMR"
+          value={money(data.metrics.nmr, 1)}
+          sub="Purchase payout minus cost"
+          tone={data.metrics.nmr >= 0 ? "blue" : "orange"}
+        />
+        <MetricCard
+          label="Projected NMR"
+          value={money(data.metrics.projected_nmr, 1)}
+          sub="Adds weighted 25% ATC proxy"
+          tone="purple"
+        />
+        <MetricCard
+          label="LP CTR"
+          value={pct(data.metrics.lp_ctr_pct)}
+          sub="Partner clickouts per ad click"
+          tone="default"
+        />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-5">
-        <MiniMetric
+        <PairMetricCard
           leftValue={number(data.metrics.clicks)}
           leftLabel="Clicks"
           rightValue={money(data.metrics.epv, 1)}
           rightLabel="EPV"
         />
-        <MiniMetric
+        <PairMetricCard
           leftValue={number(data.metrics.clickouts)}
           leftLabel="Clickouts"
           rightValue={money(data.metrics.cpco, 1)}
           rightLabel="CPCO"
         />
-        <MiniMetric
+        <PairMetricCard
           leftValue={number(data.metrics.visits)}
-          leftLabel="Visits"
+          leftLabel="Step 1 (Visits)"
           rightValue={money(data.metrics.cpv, 1)}
-          rightLabel="CPV"
+          rightLabel="Cost / Step 1"
         />
-        <MiniMetric
+        <PairMetricCard
           leftValue={number(data.metrics.add_to_carts)}
-          leftLabel="Add to Cart"
+          leftLabel="Step 2 (ATC)"
           rightValue={money(data.metrics.cpatc, 1)}
-          rightLabel="Cost"
+          rightLabel="Cost / Step 2"
         />
-        <MiniMetric
+        <PairMetricCard
           leftValue={number(data.metrics.net_purchases)}
-          leftLabel="Purchases"
+          leftLabel="Step 3 (Purchases)"
           rightValue={money(data.metrics.cpa, 1)}
-          rightLabel="CPA"
+          rightLabel="Cost / Step 3"
         />
+      </div>
+
+      <div className="rounded-2xl border border-gray-800 bg-gray-900">
+        <div className="border-b border-gray-800 px-5 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium text-white">Channel Matrix</div>
+              <div className="mt-1 text-sm text-gray-500">
+                Same metrics broken down by channel. Step 1 = visits, Step 2 = add to cart, Step 3 = net purchases.
+              </div>
+            </div>
+            <div className="rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-xs text-gray-400">
+              Projected NMR includes a 25% purchase-value proxy for add to cart.
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-[1400px] w-full text-sm">
+            <thead className="border-b border-gray-800 bg-gray-950 text-gray-400">
+              <tr>
+                {[
+                  "Channel",
+                  "Cost",
+                  "Payout",
+                  "NMR",
+                  "Projected NMR",
+                  "ROAS",
+                  "Clicks",
+                  "Clickouts",
+                  "$CPCO",
+                  "LP CTR",
+                  "Step 1",
+                  "Cost / Step 1",
+                  "Step 2",
+                  "Cost / Step 2",
+                  "Step 3",
+                  "Cost / Step 3",
+                ].map((label) => (
+                  <th
+                    key={label}
+                    className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium uppercase tracking-[0.16em]"
+                  >
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.channel_breakdown.map((row, index) => {
+                const isTotal = row.channel === "total";
+                return (
+                  <tr
+                    key={`${row.channel}-${index}`}
+                    className={isTotal ? "bg-white/[0.03]" : "border-t border-gray-800/80"}
+                  >
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-white">
+                      {channelLabel(row.channel)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.cost)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.payout)}</td>
+                    <td className={`whitespace-nowrap px-4 py-3 ${row.nmr >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                      {money(row.nmr)}
+                    </td>
+                    <td className={`whitespace-nowrap px-4 py-3 ${row.projected_nmr >= 0 ? "text-emerald-300" : "text-amber-300"}`}>
+                      {money(row.projected_nmr)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{pct(row.roas_pct)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.clicks)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.clickouts)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.cpco, 1)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{pct(row.lp_ctr_pct)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.step1)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.cost_per_step1, 1)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.step2)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.cost_per_step2, 1)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.step3)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.cost_per_step3, 1)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

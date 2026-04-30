@@ -7,6 +7,8 @@ const BING_ADS_DATASET_ID = process.env.BING_ADS_DATASET || "BingAds";
 const ANALYTICS_DATASET_ID = process.env.ANALYTICS_WL_DATASET || "analytics_wl";
 const GOOGLE_ADS_CUSTOMER_SUFFIX = process.env.GOOGLE_ADS_CUSTOMER_SUFFIX || "4808949235";
 const PURCHASE_VALUE_USD = Number(process.env.DEFAULT_PURCHASE_VALUE_USD || "390");
+const ADD_TO_CART_SHARE_OF_PURCHASE = Number(process.env.ADD_TO_CART_SHARE_OF_PURCHASE || "0.25");
+const ADD_TO_CART_PROXY_VALUE_USD = PURCHASE_VALUE_USD * ADD_TO_CART_SHARE_OF_PURCHASE;
 
 function coreTable(name: string) {
   return `\`${PROJECT_ID}.${CORE_DATASET_ID}.${name}\``;
@@ -297,6 +299,7 @@ export async function getDataDashboard(params: URLSearchParams) {
       COALESCE(ct.net_purchases, 0) AS net_purchases,
       ROUND(COALESCE(ct.net_purchases, 0) * ${PURCHASE_VALUE_USD}, 2) AS payout,
       ROUND(COALESCE(ct.net_purchases, 0) * ${PURCHASE_VALUE_USD} - COALESCE(mt.cost, 0), 2) AS nmr,
+      ROUND((COALESCE(ct.net_purchases, 0) * ${PURCHASE_VALUE_USD}) + (COALESCE(ct.add_to_carts, 0) * ${ADD_TO_CART_PROXY_VALUE_USD}) - COALESCE(mt.cost, 0), 2) AS projected_nmr,
       ROUND(SAFE_DIVIDE(COALESCE(ct.net_purchases, 0) * ${PURCHASE_VALUE_USD} - COALESCE(mt.cost, 0), NULLIF(COALESCE(mt.cost, 0), 0)) * 100, 1) AS roas_pct,
       ROUND(SAFE_DIVIDE(COALESCE(ot.clickouts, 0), NULLIF(COALESCE(mt.clicks, 0), 0)) * 100, 1) AS lp_ctr_pct,
       ROUND(SAFE_DIVIDE(COALESCE(ct.net_purchases, 0) * ${PURCHASE_VALUE_USD}, NULLIF(COALESCE(mt.clicks, 0), 0)), 1) AS epv,
@@ -313,6 +316,81 @@ export async function getDataDashboard(params: URLSearchParams) {
     CROSS JOIN outbound_totals ot
     CROSS JOIN date_bounds db
     CROSS JOIN freshness f
+  `;
+
+  const channelBreakdownSql = `
+    ${baseCtes},
+    channel_media AS (
+      SELECT
+        m.platform_id AS channel,
+        ROUND(SUM(m.spend), 2) AS cost,
+        SUM(m.clicks) AS clicks
+      FROM media_daily m
+      ${mediaFilters.where}
+      GROUP BY m.platform_id
+    ),
+    channel_visits AS (
+      SELECT
+        v.platform_id AS channel,
+        COUNT(*) AS visits
+      FROM visits_enriched v
+      ${visitsFilters.where}
+      GROUP BY v.platform_id
+    ),
+    channel_outbound AS (
+      SELECT
+        o.platform_id AS channel,
+        COUNT(*) AS clickouts
+      FROM outbound_enriched o
+      ${outboundFilters.where}
+      GROUP BY o.platform_id
+    ),
+    channel_conversions AS (
+      SELECT
+        j.platform_id AS channel,
+        COUNTIF(j.conversion_class = 'add_to_cart') AS add_to_carts,
+        COUNTIF(j.conversion_class = 'quiz_start') AS quiz_starts,
+        COUNTIF(j.conversion_class = 'purchase') - COUNTIF(j.conversion_class = 'purchase_reversal') AS net_purchases
+      FROM joined_enriched j
+      ${params.get("partner")
+        ? `${conversionsFilters.where ? `${conversionsFilters.where} AND` : "WHERE"} j.brand_name = @partner`
+        : conversionsFilters.where}
+      GROUP BY j.platform_id
+    ),
+    all_channels AS (
+      SELECT channel FROM channel_media
+      UNION DISTINCT
+      SELECT channel FROM channel_visits
+      UNION DISTINCT
+      SELECT channel FROM channel_outbound
+      UNION DISTINCT
+      SELECT channel FROM channel_conversions
+    )
+    SELECT
+      ac.channel,
+      COALESCE(cm.cost, 0) AS cost,
+      COALESCE(cm.clicks, 0) AS clicks,
+      COALESCE(co.clickouts, 0) AS clickouts,
+      COALESCE(cv.visits, 0) AS visits,
+      COALESCE(cc.add_to_carts, 0) AS add_to_carts,
+      COALESCE(cc.quiz_starts, 0) AS quiz_starts,
+      COALESCE(cc.net_purchases, 0) AS net_purchases,
+      ROUND(COALESCE(cc.net_purchases, 0) * ${PURCHASE_VALUE_USD}, 2) AS payout,
+      ROUND((COALESCE(cc.net_purchases, 0) * ${PURCHASE_VALUE_USD}) - COALESCE(cm.cost, 0), 2) AS nmr,
+      ROUND((COALESCE(cc.net_purchases, 0) * ${PURCHASE_VALUE_USD}) + (COALESCE(cc.add_to_carts, 0) * ${ADD_TO_CART_PROXY_VALUE_USD}) - COALESCE(cm.cost, 0), 2) AS projected_nmr,
+      ROUND(SAFE_DIVIDE((COALESCE(cc.net_purchases, 0) * ${PURCHASE_VALUE_USD}) - COALESCE(cm.cost, 0), NULLIF(COALESCE(cm.cost, 0), 0)) * 100, 1) AS roas_pct,
+      ROUND(SAFE_DIVIDE(COALESCE(co.clickouts, 0), NULLIF(COALESCE(cm.clicks, 0), 0)) * 100, 1) AS lp_ctr_pct,
+      ROUND(SAFE_DIVIDE(COALESCE(cm.cost, 0), NULLIF(COALESCE(co.clickouts, 0), 0)), 1) AS cpco,
+      ROUND(SAFE_DIVIDE(COALESCE(cm.cost, 0), NULLIF(COALESCE(cv.visits, 0), 0)), 1) AS cost_per_step1,
+      ROUND(SAFE_DIVIDE(COALESCE(cm.cost, 0), NULLIF(COALESCE(cc.add_to_carts, 0), 0)), 1) AS cost_per_step2,
+      ROUND(SAFE_DIVIDE(COALESCE(cm.cost, 0), NULLIF(COALESCE(cc.net_purchases, 0), 0)), 1) AS cost_per_step3
+    FROM all_channels ac
+    LEFT JOIN channel_media cm ON cm.channel = ac.channel
+    LEFT JOIN channel_visits cv ON cv.channel = ac.channel
+    LEFT JOIN channel_outbound co ON co.channel = ac.channel
+    LEFT JOIN channel_conversions cc ON cc.channel = ac.channel
+    WHERE ac.channel IS NOT NULL
+    ORDER BY CASE ac.channel WHEN 'bing' THEN 1 WHEN 'google' THEN 2 ELSE 99 END, ac.channel
   `;
 
   const optionsSql = `
@@ -351,7 +429,7 @@ export async function getDataDashboard(params: URLSearchParams) {
       (SELECT MAX(data_date) FROM media_daily) AS media_max_date
   `;
 
-  const [metricsRows, optionsRows] = await Promise.all([
+  const [metricsRows, optionsRows, channelRows] = await Promise.all([
     runBigQuery<Record<string, unknown>>(metricsSql, {
       ...mediaFilters.params,
       ...visitsFilters.params,
@@ -359,12 +437,54 @@ export async function getDataDashboard(params: URLSearchParams) {
       ...outboundFilters.params,
     }),
     runBigQuery<Record<string, unknown>>(optionsSql),
+    runBigQuery<Record<string, unknown>>(channelBreakdownSql, {
+      ...mediaFilters.params,
+      ...visitsFilters.params,
+      ...conversionsFilters.params,
+      ...outboundFilters.params,
+    }),
   ]);
 
   const metrics = metricsRows[0] || {};
   const options = optionsRows[0] || {};
   const mediaMinDate = String(metrics.media_min_date || options.media_min_date || "");
   const latestDataDate = String(metrics.latest_data_date || metrics.media_max_date || "");
+  const breakdownRows = channelRows.map((row) => ({
+    channel: String(row.channel || "unknown"),
+    cost: Number(row.cost || 0),
+    payout: Number(row.payout || 0),
+    nmr: Number(row.nmr || 0),
+    projected_nmr: Number(row.projected_nmr || 0),
+    roas_pct: row.roas_pct == null ? null : Number(row.roas_pct),
+    clicks: Number(row.clicks || 0),
+    clickouts: Number(row.clickouts || 0),
+    cpco: row.cpco == null ? null : Number(row.cpco),
+    lp_ctr_pct: row.lp_ctr_pct == null ? null : Number(row.lp_ctr_pct),
+    step1: Number(row.visits || 0),
+    cost_per_step1: row.cost_per_step1 == null ? null : Number(row.cost_per_step1),
+    step2: Number(row.add_to_carts || 0),
+    cost_per_step2: row.cost_per_step2 == null ? null : Number(row.cost_per_step2),
+    step3: Number(row.net_purchases || 0),
+    cost_per_step3: row.cost_per_step3 == null ? null : Number(row.cost_per_step3),
+  }));
+  const totalBreakdown = {
+    channel: "total",
+    cost: Number(metrics.cost || 0),
+    payout: Number(metrics.payout || 0),
+    nmr: Number(metrics.nmr || 0),
+    projected_nmr: Number(metrics.projected_nmr || 0),
+    roas_pct: metrics.roas_pct == null ? null : Number(metrics.roas_pct),
+    clicks: Number(metrics.clicks || 0),
+    clickouts: Number(metrics.clickouts || 0),
+    cpco: metrics.cpco == null ? null : Number(metrics.cpco),
+    lp_ctr_pct: metrics.lp_ctr_pct == null ? null : Number(metrics.lp_ctr_pct),
+    step1: Number(metrics.visits || 0),
+    cost_per_step1: metrics.cpv == null ? null : Number(metrics.cpv),
+    step2: Number(metrics.add_to_carts || 0),
+    cost_per_step2: metrics.cpatc == null ? null : Number(metrics.cpatc),
+    step3: Number(metrics.net_purchases || 0),
+    cost_per_step3: metrics.cpa == null ? null : Number(metrics.cpa),
+  };
 
   return {
     filters: {
@@ -384,6 +504,7 @@ export async function getDataDashboard(params: URLSearchParams) {
       cost: Number(metrics.cost || 0),
       payout: Number(metrics.payout || 0),
       nmr: Number(metrics.nmr || 0),
+      projected_nmr: Number(metrics.projected_nmr || 0),
       roas_pct: metrics.roas_pct == null ? null : Number(metrics.roas_pct),
       lp_ctr_pct: metrics.lp_ctr_pct == null ? null : Number(metrics.lp_ctr_pct),
       clicks: Number(metrics.clicks || 0),
@@ -398,5 +519,6 @@ export async function getDataDashboard(params: URLSearchParams) {
       cpa: metrics.cpa == null ? null : Number(metrics.cpa),
       quiz_starts: Number(metrics.quiz_starts || 0),
     },
+    channel_breakdown: [totalBreakdown, ...breakdownRows],
   };
 }
