@@ -110,6 +110,7 @@ export default function CompetitorLandscapeContent() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showReadAlerts, setShowReadAlerts] = useState(false);
+  const [showFullMatrix, setShowFullMatrix] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -136,6 +137,11 @@ export default function CompetitorLandscapeContent() {
     if (!data) return [];
     return showReadAlerts ? data.alerts : data.alerts.filter((alert) => !alert.is_read);
   }, [data, showReadAlerts]);
+
+  const visibleMatrix = useMemo(() => {
+    if (!data) return [];
+    return showFullMatrix ? data.matrix : data.matrix.slice(0, 10);
+  }, [data, showFullMatrix]);
 
   async function markRead(ids?: number[], markAll = false) {
     setSaving(true);
@@ -220,6 +226,13 @@ export default function CompetitorLandscapeContent() {
                 Latest captured partner ranking across the slide 9 landscape sources. Column headers link to the monitored pages.
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowFullMatrix((current) => !current)}
+              className="rounded-xl border border-gray-700 bg-gray-950 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
+            >
+              {showFullMatrix ? "Show top 10" : `Show all rows (${data.matrix.length})`}
+            </button>
           </div>
         </div>
 
@@ -241,7 +254,7 @@ export default function CompetitorLandscapeContent() {
               </tr>
             </thead>
             <tbody>
-              {data.matrix.map((row) => (
+              {visibleMatrix.map((row) => (
                 <tr key={row.rank} className="border-t border-gray-800/80">
                   <td className="whitespace-nowrap px-4 py-3 font-medium text-white">{row.rank}</td>
                   {data.sources.map((source) => {
@@ -263,6 +276,11 @@ export default function CompetitorLandscapeContent() {
             </tbody>
           </table>
         </div>
+        {data.matrix.length > 10 && (
+          <div className="border-t border-gray-800 px-5 py-3 text-xs text-gray-500">
+            Showing {visibleMatrix.length} of {data.matrix.length} rows. More than 10 usually means the parser needs review.
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-gray-800 bg-gray-900">

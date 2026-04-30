@@ -147,6 +147,35 @@ const PARTNER_ALIAS_ENTRIES: Array<[string, string[]]> = [
   ["JRNYS", ["jrnys"]],
 ];
 
+const GENERIC_LINE_DENY_PATTERNS = [
+  /\bread more\b/i,
+  /\bread less\b/i,
+  /\blearn how we score\b/i,
+  /\blearn more\b/i,
+  /\badvertising disclosure\b/i,
+  /\beditorial\b/i,
+  /\bdisclosure\b/i,
+  /\bupdated\b/i,
+  /\blast updated\b/i,
+  /\bfaq\b/i,
+  /\breviews?\b/i,
+  /\babout us\b/i,
+  /\bcontact us\b/i,
+  /\bprivacy policy\b/i,
+  /\bterms\b/i,
+  /\bvisit site\b/i,
+  /\bshop now\b/i,
+  /\bget started\b/i,
+  /\bsee details\b/i,
+  /\bour most popular\b/i,
+  /\bmost popular\b/i,
+  /\bclinical researcher\b/i,
+  /\blearn\b/i,
+  /\bclick here\b/i,
+  /\btable of contents\b/i,
+  /\bweight loss medications of\b/i,
+];
+
 const ALIAS_TO_CANONICAL = new Map<string, string>();
 for (const [canonical, aliases] of PARTNER_ALIAS_ENTRIES) {
   for (const alias of aliases) {
@@ -190,10 +219,6 @@ function safeJsonParse<T>(value: unknown, fallback: T): T {
   }
 }
 
-function displayNameForCanonical(canonical: string) {
-  return canonical;
-}
-
 function canonicalizePartnerName(value: string) {
   const normalized = normalizeKey(value);
   if (!normalized) return null;
@@ -208,6 +233,7 @@ function canonicalizePartnerName(value: string) {
 function isLikelyGenericLine(value: string) {
   const normalized = normalizeKey(value);
   if (!normalized) return true;
+  if (GENERIC_LINE_DENY_PATTERNS.some((pattern) => pattern.test(value))) return true;
   return [
     "visit site",
     "go to",
@@ -221,13 +247,55 @@ function isLikelyGenericLine(value: string) {
   ].includes(normalized);
 }
 
-function isLikelyPartnerCandidate(value: string) {
+function cleanDescription(value: string | null | undefined) {
   const cleaned = normalizeWhitespace(value);
-  if (!cleaned || cleaned.length > 42 || cleaned.length < 2) return false;
-  if (/^\d+([.,]\d+)?$/.test(cleaned)) return false;
-  if (isLikelyGenericLine(cleaned)) return false;
-  const words = cleaned.split(/\s+/);
-  return words.length <= 4;
+  if (!cleaned) return null;
+  if (GENERIC_LINE_DENY_PATTERNS.some((pattern) => pattern.test(cleaned))) return null;
+  if (cleaned.length < 12) return null;
+  return cleaned;
+}
+
+function isKnownPartnerName(value: string) {
+  return Boolean(canonicalizePartnerName(value));
+}
+
+function finalizePartnerRows(rows: ExtractedPartner[], source: CompetitorSource) {
+  const allowedSeeds = new Set(
+    [...source.seeded_partners, ...COMPETITOR_SOURCES.flatMap((item) => item.seeded_partners)].map((item) =>
+      canonicalizePartnerName(item) || item,
+    ),
+  );
+  const cleaned: ExtractedPartner[] = [];
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    const canonical = canonicalizePartnerName(row.display_name) || canonicalizePartnerName(row.canonical_name) || row.canonical_name;
+    if (!canonical) continue;
+    if (seen.has(canonical)) continue;
+    if (GENERIC_LINE_DENY_PATTERNS.some((pattern) => pattern.test(row.display_name))) continue;
+    if (!allowedSeeds.has(canonical) && !isKnownPartnerName(row.display_name)) continue;
+
+    const marketingLines = row.marketing_lines
+      .map((line) => cleanDescription(line))
+      .filter((line): line is string => Boolean(line))
+      .slice(0, 3);
+
+    const description = cleanDescription(row.description) || marketingLines[0] || null;
+
+    cleaned.push({
+      ...row,
+      canonical_name: canonical,
+      display_name: canonical,
+      description,
+      marketing_lines: marketingLines,
+    });
+    seen.add(canonical);
+  }
+
+  return cleaned.slice(0, 10).map((row, index) => ({
+    ...row,
+    rank: index + 1,
+  }));
 }
 
 function scoreFromBlock(block: string) {
@@ -257,25 +325,12 @@ function extractVisibleLines($: cheerio.CheerioAPI) {
 }
 
 function inferPartnerRowsFromLines(lines: string[], source: CompetitorSource): ExtractedPartner[] {
-  const seen = new Set<string>();
   const rows: ExtractedPartner[] = [];
-  const partnerUniverse = new Set<string>([
-    ...source.seeded_partners,
-    ...COMPETITOR_SOURCES.flatMap((item) => item.seeded_partners),
-  ]);
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
-    const canonical =
-      canonicalizePartnerName(line) ||
-      (isLikelyPartnerCandidate(line) && /visit site|go to|editorial score|score|month|support/i.test(lines.slice(i, i + 5).join(" "))
-        ? displayNameForCanonical(line)
-        : null);
-
-    const chosenCanonical =
-      canonical && partnerUniverse.has(canonical) ? canonical : canonical && isLikelyPartnerCandidate(canonical) ? canonical : null;
-
-    if (!chosenCanonical || seen.has(chosenCanonical)) {
+    const chosenCanonical = canonicalizePartnerName(line);
+    if (!chosenCanonical) {
       continue;
     }
 
@@ -295,10 +350,9 @@ function inferPartnerRowsFromLines(lines: string[], source: CompetitorSource): E
       marketing_lines: marketingLines,
       raw_block: textExcerpt(block, 1200),
     });
-    seen.add(chosenCanonical);
   }
 
-  return rows;
+  return finalizePartnerRows(rows, source);
 }
 
 function fallbackSeedRows(source: CompetitorSource): ExtractedPartner[] {
@@ -326,6 +380,7 @@ function extractSnapshotFromHtml(source: CompetitorSource, html: string, finalUr
   if (partners.length === 0) {
     partners = fallbackSeedRows(source);
   }
+  partners = finalizePartnerRows(partners, source);
 
   const contentBasis = normalizeWhitespace(lines.join("\n"));
   const tableBasis = JSON.stringify(
