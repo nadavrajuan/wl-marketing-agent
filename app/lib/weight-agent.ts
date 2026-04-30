@@ -10,6 +10,7 @@ import {
 const PROJECT_ID = process.env.BIGQUERY_PROJECT_ID || "weightagent";
 const DATASET_ID = process.env.BIGQUERY_DATASET || "WeightAgent";
 const GOOGLE_ADS_DATASET_ID = process.env.GOOGLE_ADS_DATASET || "GoogleAds";
+const BING_ADS_DATASET_ID = process.env.BING_ADS_DATASET || "BingAds";
 const GOOGLE_ADS_CUSTOMER_SUFFIX = process.env.GOOGLE_ADS_CUSTOMER_SUFFIX || "4808949235";
 export const PURCHASE_VALUE_USD = Number(process.env.DEFAULT_PURCHASE_VALUE_USD || "390");
 export const ADD_TO_CART_SHARE_OF_PURCHASE = Number(
@@ -25,6 +26,10 @@ function table(name: string) {
 
 function googleAdsTable(name: string) {
   return `\`${PROJECT_ID}.${GOOGLE_ADS_DATASET_ID}.${name}_${GOOGLE_ADS_CUSTOMER_SUFFIX}\``;
+}
+
+function bingAdsTable(name: string) {
+  return `\`${PROJECT_ID}.${BING_ADS_DATASET_ID}.${name}\``;
 }
 
 const baseCtes = String.raw`
@@ -205,6 +210,27 @@ media_daily AS (
     ON gad.campaign_id = CAST(s.campaign_id AS STRING)
    AND gad.adgroup_id = CAST(s.ad_group_id AS STRING)
    AND gad.ad_id = CAST(s.ad_group_ad_ad_id AS STRING)
+  UNION ALL
+  SELECT
+    s.data_date,
+    'bing' AS platform_id,
+    CAST(s.campaign_id AS STRING) AS campaign_id,
+    CAST(s.ad_group_id AS STRING) AS adgroup_id,
+    CAST(s.ad_id AS STRING) AS ad_id,
+    s.campaign_name,
+    s.ad_group_name,
+    CASE
+      WHEN LOWER(COALESCE(s.device_type, 'unknown')) = 'computer' THEN 'desktop'
+      WHEN LOWER(COALESCE(s.device_type, 'unknown')) = 'smartphone' THEN 'mobile'
+      WHEN LOWER(COALESCE(s.device_type, 'unknown')) = 'tablet' THEN 'tablet'
+      ELSE LOWER(COALESCE(s.device_type, 'unknown'))
+    END AS device_type,
+    s.final_url AS final_url_raw,
+    CAST(s.impressions AS INT64) AS impressions,
+    CAST(s.clicks AS INT64) AS clicks,
+    ROUND(CAST(s.spend AS FLOAT64), 2) AS spend,
+    CAST(s.conversions AS FLOAT64) AS uploaded_conversions
+  FROM ${bingAdsTable("ad_performance")} s
 ),
 media_daily_norm AS (
   SELECT
@@ -871,12 +897,13 @@ export async function getKeywordOpportunities(params: URLSearchParams, limit = 2
 }
 
 export async function getOptimizationFlow(params: URLSearchParams) {
-  const [truth, keywordRows, landingPages, partners, googleAdCopy] = await Promise.all([
+  const [truth, keywordRows, landingPages, partners, googleAdCopy, campaignRows] = await Promise.all([
     getMeasurementTruth(params),
     getKeywordOpportunities(params, 500),
     getLandingPages(params, 200),
     getPartners(params),
     getGoogleAdCopyDiagnostics(params, 120),
+    getCampaigns(params),
   ]);
 
   const rows = (keywordRows as Record<string, unknown>[]).map((row) => ({
@@ -955,6 +982,10 @@ export async function getOptimizationFlow(params: URLSearchParams) {
     .slice(0, 5);
 
   const estimatedSpend = rows.reduce((sum, row) => sum + row.estimated_spend, 0);
+  const rawMediaSpend = (campaignRows as Record<string, unknown>[]).reduce(
+    (sum, row) => sum + Number(row.spend || 0),
+    0,
+  );
   const purchaseRevenue = rows.reduce((sum, row) => sum + row.purchase_revenue, 0);
   const proxyValue = rows.reduce((sum, row) => sum + row.add_to_cart_proxy_value, 0);
   const purchaseProfit = rows.reduce((sum, row) => sum + row.purchase_profit, 0);
@@ -1013,13 +1044,15 @@ export async function getOptimizationFlow(params: URLSearchParams) {
       add_to_cart_share_of_purchase: ADD_TO_CART_SHARE_OF_PURCHASE,
       add_to_cart_proxy_value_usd: ADD_TO_CART_VALUE_USD,
       spend_allocation_method:
-        "Google uses exact keyword-day spend from the GoogleAds transfer. Bing still allocates campaign-day spend to keyword by share of visits within the same platform/date/campaign.",
-      spend_confidence: "hybrid_exact_google__inferred_bing",
+        "Google uses exact keyword-day spend from the GoogleAds transfer. Bing uses exact ad-day spend allocated to matched keywords by visit share inside the same ad/day/device bucket.",
+      spend_confidence: "exact_google__exact_bing_ad_day_allocated_to_keyword",
+      raw_media_spend_usd: Number(rawMediaSpend.toFixed(2)),
+      matched_keyword_spend_usd: Number(estimatedSpend.toFixed(2)),
     },
     measurement_truth: truth,
     summary: {
       spend_covered_keyword_rows: rows.length,
-      estimated_spend: Number(estimatedSpend.toFixed(2)),
+      estimated_spend: Number(rawMediaSpend.toFixed(2)),
       purchase_revenue: Number(purchaseRevenue.toFixed(2)),
       add_to_cart_proxy_value: Number(proxyValue.toFixed(2)),
       purchase_profit: Number(purchaseProfit.toFixed(2)),

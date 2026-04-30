@@ -39,6 +39,8 @@ type OptimizationFlow = {
     add_to_cart_proxy_value_usd: number;
     spend_allocation_method: string;
     spend_confidence: string;
+    raw_media_spend_usd?: number;
+    matched_keyword_spend_usd?: number;
   };
   measurement_truth: {
     warnings: string[];
@@ -117,9 +119,9 @@ export default function DashboardContent() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard
-          label="Estimated Spend"
+          label="Media Spend"
           value={money(data.summary.estimated_spend)}
-          sub="Spend-covered keyword layer"
+          sub="Raw Google + Bing spend in BigQuery"
           color="orange"
         />
         <StatCard
@@ -164,7 +166,11 @@ export default function DashboardContent() {
         <StatCard
           label="Spend Confidence"
           value="Native"
-          sub="Exact Google + native Bing allocation"
+          sub={
+            data.assumptions.matched_keyword_spend_usd != null
+              ? `${money(data.assumptions.matched_keyword_spend_usd)} matched to keyword layer`
+              : "Exact Google + native Bing allocation"
+          }
           color="default"
         />
       </div>

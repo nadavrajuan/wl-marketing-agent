@@ -17,6 +17,17 @@ function bingTable(name: string) {
   return `\`${PROJECT_ID}.${BING_DATASET_ID}.${name}\``;
 }
 
+function normalizeBingDeviceSql(column: string) {
+  return `
+    CASE
+      WHEN LOWER(COALESCE(${column}, 'unknown')) = 'computer' THEN 'desktop'
+      WHEN LOWER(COALESCE(${column}, 'unknown')) = 'smartphone' THEN 'mobile'
+      WHEN LOWER(COALESCE(${column}, 'unknown')) = 'tablet' THEN 'tablet'
+      ELSE LOWER(COALESCE(${column}, 'unknown'))
+    END
+  `;
+}
+
 function buildWhere(clauses: string[]) {
   return clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 }
@@ -38,7 +49,7 @@ function buildBingFilters(params: URLSearchParams) {
     };
     queryParams.device = deviceMap[device.toLowerCase()] || device.toLowerCase();
     visitClauses.push("bv.device_type = @device");
-    adClauses.push("LOWER(COALESCE(s.device_type, 'unknown')) = @device");
+    adClauses.push(`${normalizeBingDeviceSql("s.device_type")} = @device`);
   }
 
   const dateFrom = params.get("date_from");
@@ -229,13 +240,13 @@ export async function getBingAdCopyDiagnostics(params: URLSearchParams, limit = 
        AND v.campaign_id = CAST(s.campaign_id AS STRING)
        AND v.adgroup_id = CAST(s.ad_group_id AS STRING)
        AND v.ad_id = CAST(s.ad_id AS STRING)
-       AND LOWER(v.device_type) = LOWER(COALESCE(s.device_type, 'unknown'))
+       AND v.device_type = ${normalizeBingDeviceSql("s.device_type")}
       LEFT JOIN bing_ad_day_conversions c
         ON c.data_date = s.data_date
        AND c.campaign_id = CAST(s.campaign_id AS STRING)
        AND c.adgroup_id = CAST(s.ad_group_id AS STRING)
        AND c.ad_id = CAST(s.ad_id AS STRING)
-       AND LOWER(c.device_type) = LOWER(COALESCE(s.device_type, 'unknown'))
+       AND c.device_type = ${normalizeBingDeviceSql("s.device_type")}
       LEFT JOIN bing_ad_entities e
         ON e.campaign_id = CAST(s.campaign_id AS STRING)
        AND e.adgroup_id = CAST(s.ad_group_id AS STRING)
@@ -368,7 +379,7 @@ export async function getBingKeywordOpportunities(params: URLSearchParams, limit
        AND CAST(s.campaign_id AS STRING) = kv.campaign_id
        AND CAST(s.ad_group_id AS STRING) = kv.adgroup_id
        AND CAST(s.ad_id AS STRING) = kv.ad_id
-       AND LOWER(COALESCE(s.device_type, 'unknown')) = kv.device_type
+       AND ${normalizeBingDeviceSql("s.device_type")} = kv.device_type
       LEFT JOIN bing_keyword_conversion_day kc
         ON kc.data_date = kv.data_date
        AND kc.campaign_id = kv.campaign_id
