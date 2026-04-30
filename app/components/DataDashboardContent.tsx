@@ -2,6 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 type Option = {
   value: string;
@@ -51,6 +61,16 @@ type UrlRow = {
   cost_per_step1: number | null;
 };
 
+type TimeSeriesRow = {
+  period_start: string;
+  period_label: string;
+  cost: number;
+  payout: number;
+  nmr: number;
+  roas_pct: number | null;
+  lp_ctr_pct: number | null;
+};
+
 type DashboardResponse = {
   filters: {
     account: string;
@@ -87,7 +107,24 @@ type DashboardResponse = {
   channel_breakdown: MatrixRow[];
   partner_breakdown: PartnerRow[];
   url_breakdown: UrlRow[];
+  time_grain: "month" | "week" | "day" | string;
+  time_series: TimeSeriesRow[];
 };
+
+type MetricKey = "cost" | "payout" | "nmr" | "roas_pct" | "lp_ctr_pct";
+
+const GRAPH_METRICS: Array<{
+  key: MetricKey;
+  label: string;
+  color: string;
+  isPercent?: boolean;
+}> = [
+  { key: "cost", label: "Cost", color: "#84cc16" },
+  { key: "payout", label: "Payout", color: "#3b82f6" },
+  { key: "nmr", label: "NMR", color: "#f97316" },
+  { key: "roas_pct", label: "ROAS", color: "#a855f7", isPercent: true },
+  { key: "lp_ctr_pct", label: "LP CTR", color: "#14b8a6", isPercent: true },
+];
 
 function money(value: number | null | undefined, digits = 0) {
   if (value == null || Number.isNaN(value)) return "—";
@@ -217,10 +254,13 @@ export default function DataDashboardContent() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timeGrain, setTimeGrain] = useState<"month" | "week" | "day">("week");
+  const [selectedMetrics, setSelectedMetrics] = useState<MetricKey[]>(["cost", "payout"]);
 
   useEffect(() => {
     const query = searchParams.toString();
-    fetch(`/api/data-dashboard${query ? `?${query}` : ""}`)
+    const url = `/api/data-dashboard${query ? `?${query}&time_grain=${timeGrain}` : `?time_grain=${timeGrain}`}`;
+    fetch(url)
       .then(async (response) => {
         if (!response.ok) {
           const text = await response.text();
@@ -237,7 +277,7 @@ export default function DataDashboardContent() {
         setError(err instanceof Error ? err.message : "Failed to load dashboard.");
         setLoading(false);
       });
-  }, [searchParams]);
+  }, [searchParams, timeGrain]);
 
   const setFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -254,6 +294,29 @@ export default function DataDashboardContent() {
       to: searchParams.get("date_to") || data.filters.defaults.date_to,
     };
   }, [data, searchParams]);
+
+  const selectedMetricSet = useMemo(() => new Set(selectedMetrics), [selectedMetrics]);
+  const activeGraphMetrics = useMemo(
+    () => GRAPH_METRICS.filter((metric) => selectedMetricSet.has(metric.key)),
+    [selectedMetricSet],
+  );
+
+  const moneySeriesSelected = activeGraphMetrics.some((metric) => !metric.isPercent);
+  const percentSeriesSelected = activeGraphMetrics.some((metric) => metric.isPercent);
+
+  function toggleMetric(metric: MetricKey) {
+    setSelectedMetrics((current) => {
+      if (current.includes(metric)) {
+        if (current.length === 1) return current;
+        return current.filter((item) => item !== metric);
+      }
+      return [...current, metric];
+    });
+  }
+
+  function selectAllMetrics() {
+    setSelectedMetrics(GRAPH_METRICS.map((metric) => metric.key));
+  }
 
   if (loading && !data) {
     return <div className="mt-10 text-center text-gray-400">Loading data dashboard...</div>;
@@ -466,6 +529,128 @@ export default function DataDashboardContent() {
           rightValue={money(data.metrics.cpa, 1)}
           rightLabel="Cost / Step 3"
         />
+      </div>
+
+      <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-sm font-medium text-white">Over Time Analysis By:</div>
+            <button
+              type="button"
+              onClick={selectAllMetrics}
+              className={`rounded-xl border px-4 py-2 text-sm transition-colors ${
+                selectedMetrics.length === GRAPH_METRICS.length
+                  ? "border-indigo-500 bg-indigo-600 text-white"
+                  : "border-gray-700 bg-gray-950 text-gray-300 hover:border-gray-500"
+              }`}
+            >
+              Select all
+            </button>
+            {GRAPH_METRICS.map((metric) => {
+              const active = selectedMetricSet.has(metric.key);
+              return (
+                <button
+                  key={metric.key}
+                  type="button"
+                  onClick={() => toggleMetric(metric.key)}
+                  className={`rounded-xl border px-4 py-2 text-sm transition-colors ${
+                    active
+                      ? "border-white/15 bg-white text-gray-950"
+                      : "border-gray-700 bg-gray-950 text-gray-300 hover:border-gray-500"
+                  }`}
+                >
+                  {metric.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {(["month", "week", "day"] as const).map((grain) => {
+              const active = timeGrain === grain;
+              return (
+                <button
+                  key={grain}
+                  type="button"
+                  onClick={() => setTimeGrain(grain)}
+                  className={`rounded-xl border px-5 py-2 text-sm capitalize transition-colors ${
+                    active
+                      ? "border-indigo-500 bg-indigo-600 text-white"
+                      : "border-gray-700 bg-gray-950 text-gray-300 hover:border-gray-500"
+                  }`}
+                >
+                  {grain}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="h-[340px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data.time_series} margin={{ top: 12, right: 20, left: 0, bottom: 12 }}>
+              <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="period_label"
+                tick={{ fontSize: 11, fill: "#9ca3af" }}
+                tickLine={false}
+                axisLine={false}
+                minTickGap={16}
+              />
+              {moneySeriesSelected && (
+                <YAxis
+                  yAxisId="money"
+                  tick={{ fontSize: 11, fill: "#9ca3af" }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value) => `$${Number(value).toLocaleString()}`}
+                />
+              )}
+              {percentSeriesSelected && (
+                <YAxis
+                  yAxisId="percent"
+                  orientation="right"
+                  tick={{ fontSize: 11, fill: "#9ca3af" }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value) => `${Number(value).toFixed(0)}%`}
+                />
+              )}
+              <Tooltip
+                contentStyle={{
+                  background: "#111827",
+                  border: "1px solid #374151",
+                  borderRadius: 12,
+                  fontSize: 12,
+                  color: "#e5e7eb",
+                }}
+                formatter={(value, name) => {
+                  const metric = GRAPH_METRICS.find((item) => item.label === String(name));
+                  if (metric?.isPercent) {
+                    return [`${Number(value ?? 0).toFixed(1)}%`, String(name)];
+                  }
+                  return [money(Number(value ?? 0), 0), String(name)];
+                }}
+                labelStyle={{ color: "#f3f4f6" }}
+              />
+              <Legend wrapperStyle={{ fontSize: 12, color: "#9ca3af" }} />
+              {activeGraphMetrics.map((metric) => (
+                <Line
+                  key={metric.key}
+                  yAxisId={metric.isPercent ? "percent" : "money"}
+                  type="monotone"
+                  dataKey={metric.key}
+                  name={metric.label}
+                  stroke={metric.color}
+                  strokeWidth={3}
+                  dot={{ r: 3, strokeWidth: 0 }}
+                  activeDot={{ r: 5 }}
+                  connectNulls
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-gray-800 bg-gray-900">

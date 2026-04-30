@@ -245,10 +245,35 @@ function buildDashboardFilters(params: URLSearchParams, alias: string, dateField
 }
 
 export async function getDataDashboard(params: URLSearchParams) {
+  const timeGrain = (params.get("time_grain") || "week").toLowerCase();
   const mediaFilters = buildDashboardFilters(params, "m", "data_date");
   const visitsFilters = buildDashboardFilters(params, "v", "entered_at_date");
   const conversionsFilters = buildDashboardFilters(params, "j", "conversion_date");
   const outboundFilters = buildDashboardFilters(params, "o", "event_date", true);
+  const periodExpr = (() => {
+    if (timeGrain === "month") {
+      return {
+        media: "DATE_TRUNC(m.data_date, MONTH)",
+        conversion: "DATE_TRUNC(j.conversion_date, MONTH)",
+        outbound: "DATE_TRUNC(o.event_date, MONTH)",
+        label: "FORMAT_DATE('%Y-%m', period_start)",
+      };
+    }
+    if (timeGrain === "day") {
+      return {
+        media: "m.data_date",
+        conversion: "j.conversion_date",
+        outbound: "o.event_date",
+        label: "FORMAT_DATE('%Y-%m-%d', period_start)",
+      };
+    }
+    return {
+      media: "DATE_TRUNC(m.data_date, WEEK(MONDAY))",
+      conversion: "DATE_TRUNC(j.conversion_date, WEEK(MONDAY))",
+      outbound: "DATE_TRUNC(o.event_date, WEEK(MONDAY))",
+      label: "FORMAT_DATE('%G-W%V', period_start)",
+    };
+  })();
 
   const metricsSql = `
     ${baseCtes},
@@ -543,6 +568,62 @@ export async function getDataDashboard(params: URLSearchParams) {
     LIMIT 50
   `;
 
+  const timeSeriesSql = `
+    ${baseCtes},
+    media_series AS (
+      SELECT
+        ${periodExpr.media} AS period_start,
+        ROUND(SUM(m.spend), 2) AS cost,
+        SUM(m.clicks) AS clicks
+      FROM media_daily m
+      ${mediaFilters.where}
+      GROUP BY period_start
+    ),
+    conversion_series AS (
+      SELECT
+        ${periodExpr.conversion} AS period_start,
+        COUNTIF(j.conversion_class = 'add_to_cart') AS add_to_carts,
+        COUNTIF(j.conversion_class = 'purchase') - COUNTIF(j.conversion_class = 'purchase_reversal') AS net_purchases
+      FROM joined_enriched j
+      ${params.get("partner")
+        ? `${conversionsFilters.where ? `${conversionsFilters.where} AND` : "WHERE"} j.brand_name = @partner`
+        : conversionsFilters.where}
+      GROUP BY period_start
+    ),
+    outbound_series AS (
+      SELECT
+        ${periodExpr.outbound} AS period_start,
+        COUNT(*) AS clickouts
+      FROM outbound_enriched o
+      ${outboundFilters.where}
+      GROUP BY period_start
+    ),
+    all_periods AS (
+      SELECT period_start FROM media_series
+      UNION DISTINCT
+      SELECT period_start FROM conversion_series
+      UNION DISTINCT
+      SELECT period_start FROM outbound_series
+    )
+    SELECT
+      ap.period_start,
+      ${periodExpr.label} AS period_label,
+      COALESCE(ms.cost, 0) AS cost,
+      ROUND(COALESCE(cs.net_purchases, 0) * ${PURCHASE_VALUE_USD}, 2) AS payout,
+      ROUND((COALESCE(cs.net_purchases, 0) * ${PURCHASE_VALUE_USD}) - COALESCE(ms.cost, 0), 2) AS nmr,
+      ROUND(SAFE_DIVIDE((COALESCE(cs.net_purchases, 0) * ${PURCHASE_VALUE_USD}) - COALESCE(ms.cost, 0), NULLIF(COALESCE(ms.cost, 0), 0)) * 100, 1) AS roas_pct,
+      ROUND(SAFE_DIVIDE(COALESCE(os.clickouts, 0), NULLIF(COALESCE(ms.clicks, 0), 0)) * 100, 1) AS lp_ctr_pct
+    FROM all_periods ap
+    LEFT JOIN media_series ms
+      ON ms.period_start = ap.period_start
+    LEFT JOIN conversion_series cs
+      ON cs.period_start = ap.period_start
+    LEFT JOIN outbound_series os
+      ON os.period_start = ap.period_start
+    WHERE ap.period_start IS NOT NULL
+    ORDER BY ap.period_start
+  `;
+
   const optionsSql = `
     ${baseCtes}
     SELECT
@@ -579,7 +660,7 @@ export async function getDataDashboard(params: URLSearchParams) {
       (SELECT MAX(data_date) FROM media_daily) AS media_max_date
   `;
 
-  const [metricsRows, optionsRows, channelRows, partnerRows, urlRows] = await Promise.all([
+  const [metricsRows, optionsRows, channelRows, partnerRows, urlRows, timeSeriesRows] = await Promise.all([
     runBigQuery<Record<string, unknown>>(metricsSql, {
       ...mediaFilters.params,
       ...visitsFilters.params,
@@ -600,6 +681,12 @@ export async function getDataDashboard(params: URLSearchParams) {
       ...outboundFilters.params,
     }),
     runBigQuery<Record<string, unknown>>(urlBreakdownSql, {
+      ...mediaFilters.params,
+      ...visitsFilters.params,
+      ...conversionsFilters.params,
+      ...outboundFilters.params,
+    }),
+    runBigQuery<Record<string, unknown>>(timeSeriesSql, {
       ...mediaFilters.params,
       ...visitsFilters.params,
       ...conversionsFilters.params,
@@ -746,5 +833,15 @@ export async function getDataDashboard(params: URLSearchParams) {
     channel_breakdown: [totalBreakdown, ...breakdownRows],
     partner_breakdown: [partnerTotal, ...partnerBreakdownRows],
     url_breakdown: [urlTotal, ...urlBreakdownRows],
+    time_grain: timeGrain,
+    time_series: timeSeriesRows.map((row) => ({
+      period_start: String(row.period_start || ""),
+      period_label: String(row.period_label || ""),
+      cost: Number(row.cost || 0),
+      payout: Number(row.payout || 0),
+      nmr: Number(row.nmr || 0),
+      roas_pct: row.roas_pct == null ? null : Number(row.roas_pct),
+      lp_ctr_pct: row.lp_ctr_pct == null ? null : Number(row.lp_ctr_pct),
+    })),
   };
 }
