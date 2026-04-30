@@ -1,0 +1,22 @@
+name: Competitor Landscape Sync
+
+on:
+  schedule:
+    - cron: "15 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger production competitor sync
+        env:
+          BASIC_AUTH_USER: ${{ secrets.WL_BASIC_AUTH_USERNAME }}
+          BASIC_AUTH_PASSWORD: ${{ secrets.WL_BASIC_AUTH_PASSWORD }}
+          COMPETITOR_SYNC_TOKEN: ${{ secrets.COMPETITOR_SYNC_TOKEN }}
+        run: |
+          curl --fail-with-body \
+            -u "${BASIC_AUTH_USER}:${BASIC_AUTH_PASSWORD}" \
+            -X POST \
+            -H "x-sync-token: ${COMPETITOR_SYNC_TOKEN}" \
+            https://wl.rajuan.app/api/internal/competitor-landscape/sync

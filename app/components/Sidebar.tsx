@@ -6,6 +6,7 @@ const agentUrl = process.env.NEXT_PUBLIC_AGENT_BASE_URL || "/agent/";
 
 const nav = [
   { href: "/", label: "Action Board", icon: "📊" },
+  { href: "/competitor-landscape", label: "Competitor Landscape", icon: "🛰️" },
   { href: "/data-dashboard", label: "Data Dashboard", icon: "🧮" },
   { href: "/recommendations", label: "Recommendations", icon: "🧭" },
   { href: "/copy-lab", label: "Copy Lab", icon: "🧠" },
