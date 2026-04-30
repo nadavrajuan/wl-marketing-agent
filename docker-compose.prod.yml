@@ -37,6 +37,8 @@ services:
       GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/run/secrets/bigquery-service-account.json}
       NEXT_PUBLIC_AGENT_BASE_URL: /agent/
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@wl-marketing-postgres:5432/${POSTGRES_DB}
+      INGEST_API_TOKEN: ${INGEST_API_TOKEN:?INGEST_API_TOKEN is required}
+      COMPETITOR_SYNC_TOKEN: ${COMPETITOR_SYNC_TOKEN:-}
     volumes:
       - ./secrets/bigquery-service-account.json:/run/secrets/bigquery-service-account.json:ro
     labels:

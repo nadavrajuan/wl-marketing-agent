@@ -9,14 +9,27 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger production competitor sync
-        env:
-          BASIC_AUTH_USER: ${{ secrets.WL_BASIC_AUTH_USERNAME }}
-          BASIC_AUTH_PASSWORD: ${{ secrets.WL_BASIC_AUTH_PASSWORD }}
-          COMPETITOR_SYNC_TOKEN: ${{ secrets.INGEST_API_TOKEN }}
-        run: |
-          curl --fail-with-body \
-            -u "${BASIC_AUTH_USER}:${BASIC_AUTH_PASSWORD}" \
-            -X POST \
-            -H "x-sync-token: ${COMPETITOR_SYNC_TOKEN}" \
-            https://wl.rajuan.app/api/internal/competitor-landscape/sync
+      - name: Trigger competitor sync on server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /home/ubuntu/wl-marketing-agent
+            docker compose -f docker-compose.prod.yml exec -T app node -e "
+              fetch('http://127.0.0.1:3000/api/internal/competitor-landscape/sync', {
+                method: 'POST',
+                headers: {
+                  'x-sync-token': process.env.COMPETITOR_SYNC_TOKEN || process.env.INGEST_API_TOKEN || ''
+                }
+              }).then(async (res) => {
+                const body = await res.text();
+                process.stdout.write(body + '\n');
+                if (!res.ok) process.exit(1);
+              }).catch((error) => {
+                console.error(error);
+                process.exit(1);
+              });
+            "
