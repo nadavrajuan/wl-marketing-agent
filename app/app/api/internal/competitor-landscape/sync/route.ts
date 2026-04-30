@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { syncCompetitorLandscape } from "@/lib/competitor-landscape";
 
 function isAuthorized(request: NextRequest) {
-  const expected = process.env.COMPETITOR_SYNC_TOKEN;
-  if (!expected) return false;
+  const accepted = [
+    process.env.COMPETITOR_SYNC_TOKEN,
+    process.env.INGEST_API_TOKEN,
+  ].filter((value): value is string => Boolean(value));
+  if (accepted.length === 0) return false;
   const header = request.headers.get("x-sync-token") || request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  return header === expected;
+  return header != null && accepted.includes(header);
 }
 
 export async function POST(request: NextRequest) {

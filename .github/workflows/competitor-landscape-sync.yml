@@ -13,7 +13,7 @@ jobs:
         env:
           BASIC_AUTH_USER: ${{ secrets.WL_BASIC_AUTH_USERNAME }}
           BASIC_AUTH_PASSWORD: ${{ secrets.WL_BASIC_AUTH_PASSWORD }}
-          COMPETITOR_SYNC_TOKEN: ${{ secrets.COMPETITOR_SYNC_TOKEN }}
+          COMPETITOR_SYNC_TOKEN: ${{ secrets.INGEST_API_TOKEN }}
         run: |
           curl --fail-with-body \
             -u "${BASIC_AUTH_USER}:${BASIC_AUTH_PASSWORD}" \
