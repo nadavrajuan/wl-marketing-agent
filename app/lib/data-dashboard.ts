@@ -256,7 +256,7 @@ export async function getDataDashboard(params: URLSearchParams) {
         media: "DATE_TRUNC(m.data_date, MONTH)",
         conversion: "DATE_TRUNC(j.conversion_date, MONTH)",
         outbound: "DATE_TRUNC(o.event_date, MONTH)",
-        label: "FORMAT_DATE('%Y-%m', period_start)",
+        label: "FORMAT_DATE('%Y-%m', ap.period_start)",
       };
     }
     if (timeGrain === "day") {
@@ -264,14 +264,14 @@ export async function getDataDashboard(params: URLSearchParams) {
         media: "m.data_date",
         conversion: "j.conversion_date",
         outbound: "o.event_date",
-        label: "FORMAT_DATE('%Y-%m-%d', period_start)",
+        label: "FORMAT_DATE('%Y-%m-%d', ap.period_start)",
       };
     }
     return {
       media: "DATE_TRUNC(m.data_date, WEEK(MONDAY))",
       conversion: "DATE_TRUNC(j.conversion_date, WEEK(MONDAY))",
       outbound: "DATE_TRUNC(o.event_date, WEEK(MONDAY))",
-      label: "FORMAT_DATE('%G-W%V', period_start)",
+      label: "FORMAT_DATE('%G-W%V', ap.period_start)",
     };
   })();
 
