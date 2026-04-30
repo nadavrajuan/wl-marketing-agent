@@ -48,6 +48,8 @@ WITH visits_norm AS (
     CAST(campaign_id AS STRING) AS campaign_id,
     CAST(adgroup_id AS STRING) AS adgroup_id,
     CAST(creative AS STRING) AS ad_id,
+    REGEXP_REPLACE(COALESCE(landing_page, 'unknown'), r'^https?://', '') AS landing_page_url,
+    COALESCE(NULLIF(REGEXP_EXTRACT(landing_page, r'^https?://[^/]+([^?#]*)'), ''), '/') AS landing_page_path,
     CASE
       WHEN LOWER(COALESCE(device, '')) IN ('c', 'computer', 'desktop') THEN 'desktop'
       WHEN LOWER(COALESCE(device, '')) IN ('m', 'mobile') THEN 'mobile'
@@ -151,6 +153,8 @@ joined_enriched AS (
     v.entered_at_date,
     v.campaign_id,
     v.device_type,
+    v.landing_page_url,
+    v.landing_page_path,
     v.campaign_name,
     v.campaign_type
   FROM conversions_norm c
@@ -178,6 +182,8 @@ outbound_enriched AS (
     v.entered_at_date,
     v.campaign_id,
     v.device_type,
+    v.landing_page_url,
+    v.landing_page_path,
     v.campaign_name,
     v.campaign_type
   FROM partner_outbound_events e
@@ -451,6 +457,92 @@ export async function getDataDashboard(params: URLSearchParams) {
     LIMIT 25
   `;
 
+  const urlBreakdownSql = `
+    ${baseCtes},
+    url_visit_stats AS (
+      SELECT
+        v.entered_at_date AS data_date,
+        v.platform_id,
+        v.campaign_id,
+        v.device_type,
+        COALESCE(NULLIF(v.landing_page_url, ''), 'unknown') AS landing_page_url,
+        COUNT(*) AS visits
+      FROM visits_enriched v
+      ${visitsFilters.where}
+      GROUP BY v.entered_at_date, v.platform_id, v.campaign_id, v.device_type, landing_page_url
+    ),
+    url_visit_share AS (
+      SELECT
+        *,
+        SAFE_DIVIDE(
+          visits,
+          NULLIF(SUM(visits) OVER (PARTITION BY data_date, platform_id, campaign_id, device_type), 0)
+        ) AS visit_share
+      FROM url_visit_stats
+    ),
+    url_media_allocation AS (
+      SELECT
+        u.landing_page_url,
+        ROUND(SUM(COALESCE(m.spend, 0) * COALESCE(u.visit_share, 0)), 2) AS cost,
+        ROUND(SUM(COALESCE(m.clicks, 0) * COALESCE(u.visit_share, 0))) AS clicks
+      FROM url_visit_share u
+      LEFT JOIN media_daily m
+        ON m.data_date = u.data_date
+       AND m.platform_id = u.platform_id
+       AND m.campaign_id = u.campaign_id
+       AND m.device_type = u.device_type
+      GROUP BY u.landing_page_url
+    ),
+    url_clickouts AS (
+      SELECT
+        COALESCE(NULLIF(o.landing_page_url, ''), 'unknown') AS landing_page_url,
+        COUNT(*) AS clickouts
+      FROM outbound_enriched o
+      ${outboundFilters.where}
+      GROUP BY landing_page_url
+    ),
+    url_conversions AS (
+      SELECT
+        COALESCE(NULLIF(j.landing_page_url, ''), 'unknown') AS landing_page_url,
+        COUNTIF(j.conversion_class = 'add_to_cart') AS step1,
+        COUNTIF(j.conversion_class = 'purchase') - COUNTIF(j.conversion_class = 'purchase_reversal') AS net_purchases
+      FROM joined_enriched j
+      ${params.get("partner")
+        ? `${conversionsFilters.where ? `${conversionsFilters.where} AND` : "WHERE"} j.brand_name = @partner`
+        : conversionsFilters.where}
+      GROUP BY landing_page_url
+    ),
+    all_urls AS (
+      SELECT landing_page_url FROM url_media_allocation
+      UNION DISTINCT
+      SELECT landing_page_url FROM url_clickouts
+      UNION DISTINCT
+      SELECT landing_page_url FROM url_conversions
+    )
+    SELECT
+      au.landing_page_url,
+      COALESCE(uma.cost, 0) AS cost,
+      COALESCE(uma.clicks, 0) AS clicks,
+      COALESCE(uc.clickouts, 0) AS clickouts,
+      COALESCE(uv.step1, 0) AS step1,
+      COALESCE(uv.net_purchases, 0) AS net_purchases,
+      ROUND(COALESCE(uv.net_purchases, 0) * ${PURCHASE_VALUE_USD}, 2) AS payout,
+      ROUND((COALESCE(uv.net_purchases, 0) * ${PURCHASE_VALUE_USD}) - COALESCE(uma.cost, 0), 2) AS nmr,
+      ROUND((COALESCE(uv.net_purchases, 0) * ${PURCHASE_VALUE_USD}) + (COALESCE(uv.step1, 0) * ${ADD_TO_CART_PROXY_VALUE_USD}) - COALESCE(uma.cost, 0), 2) AS projected_nmr,
+      ROUND(SAFE_DIVIDE(COALESCE(uc.clickouts, 0), NULLIF(COALESCE(uma.clicks, 0), 0)) * 100, 1) AS lp_ctr_pct,
+      ROUND(SAFE_DIVIDE(COALESCE(uma.cost, 0), NULLIF(COALESCE(uv.step1, 0), 0)), 1) AS cost_per_step1
+    FROM all_urls au
+    LEFT JOIN url_media_allocation uma
+      ON uma.landing_page_url = au.landing_page_url
+    LEFT JOIN url_clickouts uc
+      ON uc.landing_page_url = au.landing_page_url
+    LEFT JOIN url_conversions uv
+      ON uv.landing_page_url = au.landing_page_url
+    WHERE au.landing_page_url IS NOT NULL
+    ORDER BY payout DESC, clickouts DESC, cost DESC
+    LIMIT 50
+  `;
+
   const optionsSql = `
     ${baseCtes}
     SELECT
@@ -487,7 +579,7 @@ export async function getDataDashboard(params: URLSearchParams) {
       (SELECT MAX(data_date) FROM media_daily) AS media_max_date
   `;
 
-  const [metricsRows, optionsRows, channelRows, partnerRows] = await Promise.all([
+  const [metricsRows, optionsRows, channelRows, partnerRows, urlRows] = await Promise.all([
     runBigQuery<Record<string, unknown>>(metricsSql, {
       ...mediaFilters.params,
       ...visitsFilters.params,
@@ -502,6 +594,12 @@ export async function getDataDashboard(params: URLSearchParams) {
       ...outboundFilters.params,
     }),
     runBigQuery<Record<string, unknown>>(partnerBreakdownSql, {
+      ...mediaFilters.params,
+      ...visitsFilters.params,
+      ...conversionsFilters.params,
+      ...outboundFilters.params,
+    }),
+    runBigQuery<Record<string, unknown>>(urlBreakdownSql, {
       ...mediaFilters.params,
       ...visitsFilters.params,
       ...conversionsFilters.params,
@@ -587,6 +685,30 @@ export async function getDataDashboard(params: URLSearchParams) {
     step1: partnerBreakdownRows.reduce((sum, row) => sum + row.step1, 0),
     step2: partnerBreakdownRows.reduce((sum, row) => sum + row.step2, 0),
   };
+  const urlBreakdownRows = urlRows.map((row) => ({
+    landing_page_url: String(row.landing_page_url || "unknown"),
+    cost: Number(row.cost || 0),
+    payout: Number(row.payout || 0),
+    nmr: Number(row.nmr || 0),
+    projected_nmr: Number(row.projected_nmr || 0),
+    clicks: Number(row.clicks || 0),
+    clickouts: Number(row.clickouts || 0),
+    lp_ctr_pct: row.lp_ctr_pct == null ? null : Number(row.lp_ctr_pct),
+    step1: Number(row.step1 || 0),
+    cost_per_step1: row.cost_per_step1 == null ? null : Number(row.cost_per_step1),
+  }));
+  const urlTotal = {
+    landing_page_url: "total",
+    cost: Number(metrics.cost || 0),
+    payout: Number(metrics.payout || 0),
+    nmr: Number(metrics.nmr || 0),
+    projected_nmr: Number(metrics.projected_nmr || 0),
+    clicks: Number(metrics.clicks || 0),
+    clickouts: Number(metrics.clickouts || 0),
+    lp_ctr_pct: metrics.lp_ctr_pct == null ? null : Number(metrics.lp_ctr_pct),
+    step1: Number(metrics.add_to_carts || 0),
+    cost_per_step1: metrics.cpatc == null ? null : Number(metrics.cpatc),
+  };
 
   return {
     filters: {
@@ -623,5 +745,6 @@ export async function getDataDashboard(params: URLSearchParams) {
     },
     channel_breakdown: [totalBreakdown, ...breakdownRows],
     partner_breakdown: [partnerTotal, ...partnerBreakdownRows],
+    url_breakdown: [urlTotal, ...urlBreakdownRows],
   };
 }

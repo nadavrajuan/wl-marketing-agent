@@ -38,6 +38,19 @@ type PartnerRow = {
   step2: number;
 };
 
+type UrlRow = {
+  landing_page_url: string;
+  cost: number;
+  payout: number;
+  nmr: number;
+  projected_nmr: number;
+  clicks: number;
+  clickouts: number;
+  lp_ctr_pct: number | null;
+  step1: number;
+  cost_per_step1: number | null;
+};
+
 type DashboardResponse = {
   filters: {
     account: string;
@@ -73,6 +86,7 @@ type DashboardResponse = {
   };
   channel_breakdown: MatrixRow[];
   partner_breakdown: PartnerRow[];
+  url_breakdown: UrlRow[];
 };
 
 function money(value: number | null | undefined, digits = 0) {
@@ -189,6 +203,11 @@ function PairMetricCard({
 function channelLabel(value: string) {
   if (value === "total") return "Total";
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function urlLabel(value: string) {
+  if (value === "total") return "Total";
+  return value;
 }
 
 export default function DataDashboardContent() {
@@ -589,6 +608,80 @@ export default function DataDashboardContent() {
                     <td className="whitespace-nowrap px-4 py-3 text-gray-200">{pct(row.clickshare_pct)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.step1)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.step2)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-gray-800 bg-gray-900">
+        <div className="border-b border-gray-800 px-5 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium text-white">Analyze by URL</div>
+              <div className="mt-1 text-sm text-gray-500">
+                Landing-page level economics using visit-share media allocation, outbound clicks, and matched downstream conversion value.
+              </div>
+            </div>
+            <div className="rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-xs text-gray-400">
+              Step 1 = add to cart. Cost is allocated to URL by visit share within date, channel, campaign, and device.
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-[1280px] w-full text-sm">
+            <thead className="border-b border-gray-800 bg-gray-950 text-gray-400">
+              <tr>
+                {[
+                  "URL",
+                  "Cost",
+                  "Payout",
+                  "NMR",
+                  "Projected NMR",
+                  "Clicks",
+                  "Clickouts",
+                  "LP CTR",
+                  "Step 1",
+                  "Cost / Step 1",
+                ].map((label) => (
+                  <th
+                    key={label}
+                    className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium uppercase tracking-[0.16em]"
+                  >
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.url_breakdown.map((row, index) => {
+                const isTotal = row.landing_page_url === "total";
+                return (
+                  <tr
+                    key={`${row.landing_page_url}-${index}`}
+                    className={isTotal ? "bg-white/[0.03]" : "border-t border-gray-800/80"}
+                  >
+                    <td className={`px-4 py-3 ${isTotal ? "font-medium text-white" : "text-gray-200"}`}>
+                      <div className={isTotal ? "" : "max-w-[760px] break-all"}>
+                        {urlLabel(row.landing_page_url)}
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.cost)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.payout)}</td>
+                    <td className={`whitespace-nowrap px-4 py-3 ${row.nmr >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                      {money(row.nmr)}
+                    </td>
+                    <td className={`whitespace-nowrap px-4 py-3 ${row.projected_nmr >= 0 ? "text-emerald-300" : "text-amber-300"}`}>
+                      {money(row.projected_nmr)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.clicks)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.clickouts)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{pct(row.lp_ctr_pct)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.step1)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.cost_per_step1, 1)}</td>
                   </tr>
                 );
               })}
