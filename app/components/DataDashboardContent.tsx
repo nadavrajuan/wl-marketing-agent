@@ -27,6 +27,17 @@ type MatrixRow = {
   cost_per_step3: number | null;
 };
 
+type PartnerRow = {
+  partner: string;
+  payout: number;
+  epc: number | null;
+  epv: number | null;
+  clickouts: number;
+  clickshare_pct: number | null;
+  step1: number;
+  step2: number;
+};
+
 type DashboardResponse = {
   filters: {
     account: string;
@@ -61,6 +72,7 @@ type DashboardResponse = {
     quiz_starts: number;
   };
   channel_breakdown: MatrixRow[];
+  partner_breakdown: PartnerRow[];
 };
 
 function money(value: number | null | undefined, digits = 0) {
@@ -513,6 +525,70 @@ export default function DataDashboardContent() {
                     <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.cost_per_step2, 1)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.step3)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.cost_per_step3, 1)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-gray-800 bg-gray-900">
+        <div className="border-b border-gray-800 px-5 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium text-white">Partner Performance</div>
+              <div className="mt-1 text-sm text-gray-500">
+                Outbound click partners ranked by payout contribution, clickshare, and downstream conversion steps.
+              </div>
+            </div>
+            <div className="rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-xs text-gray-400">
+              EPC = payout per clickout. EPV = payout per total ad click in the filtered window.
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-[980px] w-full text-sm">
+            <thead className="border-b border-gray-800 bg-gray-950 text-gray-400">
+              <tr>
+                {[
+                  "Partner",
+                  "Payout",
+                  "$EPC",
+                  "EPV",
+                  "Clickout",
+                  "%Clickshare",
+                  "Step 1",
+                  "Step 2",
+                ].map((label) => (
+                  <th
+                    key={label}
+                    className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium uppercase tracking-[0.16em]"
+                  >
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.partner_breakdown.map((row, index) => {
+                const isTotal = row.partner === "total";
+                return (
+                  <tr
+                    key={`${row.partner}-${index}`}
+                    className={isTotal ? "bg-white/[0.03]" : "border-t border-gray-800/80"}
+                  >
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-white">
+                      {channelLabel(row.partner)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.payout)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.epc, 1)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{money(row.epv, 1)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.clickouts)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{pct(row.clickshare_pct)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.step1)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-200">{number(row.step2)}</td>
                   </tr>
                 );
               })}

@@ -393,6 +393,64 @@ export async function getDataDashboard(params: URLSearchParams) {
     ORDER BY CASE ac.channel WHEN 'bing' THEN 1 WHEN 'google' THEN 2 ELSE 99 END, ac.channel
   `;
 
+  const partnerBreakdownSql = `
+    ${baseCtes},
+    overall_media AS (
+      SELECT
+        COALESCE(SUM(m.clicks), 0) AS total_clicks
+      FROM media_daily m
+      ${mediaFilters.where}
+    ),
+    partner_click_stats AS (
+      SELECT
+        o.partner_name,
+        COUNT(*) AS clickouts
+      FROM outbound_enriched o
+      ${outboundFilters.where}
+      GROUP BY o.partner_name
+    ),
+    partner_visit_map AS (
+      SELECT DISTINCT
+        o.partner_name,
+        o.visit_id
+      FROM outbound_enriched o
+      ${outboundFilters.where}
+    ),
+    partner_conversion_stats AS (
+      SELECT
+        p.partner_name,
+        COUNTIF(j.conversion_class = 'add_to_cart') AS step1,
+        COUNTIF(j.conversion_class = 'purchase') - COUNTIF(j.conversion_class = 'purchase_reversal') AS step2
+      FROM partner_visit_map p
+      LEFT JOIN joined_enriched j
+        ON j.visit_id = p.visit_id
+       AND j.brand_name = p.partner_name
+      ${conversionsFilters.where ? conversionsFilters.where.replaceAll("j.", "j.") : ""}
+      GROUP BY p.partner_name
+    ),
+    clickout_totals AS (
+      SELECT COALESCE(SUM(clickouts), 0) AS total_clickouts
+      FROM partner_click_stats
+    )
+    SELECT
+      pcs.partner_name,
+      pcs.clickouts,
+      COALESCE(pcs2.step1, 0) AS step1,
+      COALESCE(pcs2.step2, 0) AS step2,
+      ROUND(COALESCE(pcs2.step2, 0) * ${PURCHASE_VALUE_USD}, 2) AS payout,
+      ROUND(SAFE_DIVIDE(COALESCE(pcs2.step2, 0) * ${PURCHASE_VALUE_USD}, NULLIF(pcs.clickouts, 0)), 1) AS epc,
+      ROUND(SAFE_DIVIDE(COALESCE(pcs2.step2, 0) * ${PURCHASE_VALUE_USD}, NULLIF(om.total_clicks, 0)), 1) AS epv,
+      ROUND(SAFE_DIVIDE(pcs.clickouts, NULLIF(ct.total_clickouts, 0)) * 100, 1) AS clickshare_pct
+    FROM partner_click_stats pcs
+    LEFT JOIN partner_conversion_stats pcs2
+      ON pcs2.partner_name = pcs.partner_name
+    CROSS JOIN overall_media om
+    CROSS JOIN clickout_totals ct
+    WHERE pcs.partner_name IS NOT NULL
+    ORDER BY payout DESC, clickouts DESC
+    LIMIT 25
+  `;
+
   const optionsSql = `
     ${baseCtes}
     SELECT
@@ -429,7 +487,7 @@ export async function getDataDashboard(params: URLSearchParams) {
       (SELECT MAX(data_date) FROM media_daily) AS media_max_date
   `;
 
-  const [metricsRows, optionsRows, channelRows] = await Promise.all([
+  const [metricsRows, optionsRows, channelRows, partnerRows] = await Promise.all([
     runBigQuery<Record<string, unknown>>(metricsSql, {
       ...mediaFilters.params,
       ...visitsFilters.params,
@@ -438,6 +496,12 @@ export async function getDataDashboard(params: URLSearchParams) {
     }),
     runBigQuery<Record<string, unknown>>(optionsSql),
     runBigQuery<Record<string, unknown>>(channelBreakdownSql, {
+      ...mediaFilters.params,
+      ...visitsFilters.params,
+      ...conversionsFilters.params,
+      ...outboundFilters.params,
+    }),
+    runBigQuery<Record<string, unknown>>(partnerBreakdownSql, {
       ...mediaFilters.params,
       ...visitsFilters.params,
       ...conversionsFilters.params,
@@ -485,6 +549,44 @@ export async function getDataDashboard(params: URLSearchParams) {
     step3: Number(metrics.net_purchases || 0),
     cost_per_step3: metrics.cpa == null ? null : Number(metrics.cpa),
   };
+  const partnerBreakdownRows = partnerRows.map((row) => ({
+    partner: String(row.partner_name || "unknown"),
+    payout: Number(row.payout || 0),
+    epc: row.epc == null ? null : Number(row.epc),
+    epv: row.epv == null ? null : Number(row.epv),
+    clickouts: Number(row.clickouts || 0),
+    clickshare_pct: row.clickshare_pct == null ? null : Number(row.clickshare_pct),
+    step1: Number(row.step1 || 0),
+    step2: Number(row.step2 || 0),
+  }));
+  const partnerTotal = {
+    partner: "total",
+    payout: Number(
+      partnerBreakdownRows.reduce((sum, row) => sum + row.payout, 0),
+    ),
+    epc:
+      partnerBreakdownRows.reduce((sum, row) => sum + row.clickouts, 0) > 0
+        ? Number(
+            (
+              partnerBreakdownRows.reduce((sum, row) => sum + row.payout, 0) /
+              partnerBreakdownRows.reduce((sum, row) => sum + row.clickouts, 0)
+            ).toFixed(1),
+          )
+        : null,
+    epv:
+      Number(metrics.clicks || 0) > 0
+        ? Number(
+            (
+              partnerBreakdownRows.reduce((sum, row) => sum + row.payout, 0) /
+              Number(metrics.clicks || 0)
+            ).toFixed(1),
+          )
+        : null,
+    clickouts: partnerBreakdownRows.reduce((sum, row) => sum + row.clickouts, 0),
+    clickshare_pct: partnerBreakdownRows.length ? 100 : null,
+    step1: partnerBreakdownRows.reduce((sum, row) => sum + row.step1, 0),
+    step2: partnerBreakdownRows.reduce((sum, row) => sum + row.step2, 0),
+  };
 
   return {
     filters: {
@@ -520,5 +622,6 @@ export async function getDataDashboard(params: URLSearchParams) {
       quiz_starts: Number(metrics.quiz_starts || 0),
     },
     channel_breakdown: [totalBreakdown, ...breakdownRows],
+    partner_breakdown: [partnerTotal, ...partnerBreakdownRows],
   };
 }
