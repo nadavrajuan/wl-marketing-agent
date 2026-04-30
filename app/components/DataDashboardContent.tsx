@@ -256,6 +256,7 @@ export default function DataDashboardContent() {
   const [error, setError] = useState<string | null>(null);
   const [timeGrain, setTimeGrain] = useState<"month" | "week" | "day">("week");
   const [selectedMetrics, setSelectedMetrics] = useState<MetricKey[]>(["cost", "payout"]);
+  const [showAllPartners, setShowAllPartners] = useState(false);
 
   useEffect(() => {
     const query = searchParams.toString();
@@ -300,6 +301,16 @@ export default function DataDashboardContent() {
     () => GRAPH_METRICS.filter((metric) => selectedMetricSet.has(metric.key)),
     [selectedMetricSet],
   );
+  const visiblePartnerRows = useMemo(() => {
+    if (!data) return [];
+    const [totalRow, ...partnerRows] = data.partner_breakdown;
+    if (showAllPartners) return data.partner_breakdown;
+    return totalRow ? [totalRow, ...partnerRows.slice(0, 5)] : partnerRows.slice(0, 5);
+  }, [data, showAllPartners]);
+  const hiddenPartnerCount = useMemo(() => {
+    if (!data) return 0;
+    return Math.max(data.partner_breakdown.length - 6, 0);
+  }, [data]);
 
   const moneySeriesSelected = activeGraphMetrics.some((metric) => !metric.isPercent);
   const percentSeriesSelected = activeGraphMetrics.some((metric) => metric.isPercent);
@@ -743,11 +754,22 @@ export default function DataDashboardContent() {
             <div>
               <div className="text-sm font-medium text-white">Partner Performance</div>
               <div className="mt-1 text-sm text-gray-500">
-                Outbound click partners ranked by payout contribution, clickshare, and downstream conversion steps.
+                Default view shows the top 5 partners by payout, plus total, with click-to-expand for the rest.
               </div>
             </div>
-            <div className="rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-xs text-gray-400">
-              EPC = payout per clickout. EPV = payout per total ad click in the filtered window.
+            <div className="flex items-center gap-2">
+              <div className="rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-xs text-gray-400">
+                EPC = payout per clickout. EPV = payout per total ad click in the filtered window.
+              </div>
+              {hiddenPartnerCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllPartners((current) => !current)}
+                  className="rounded-xl border border-gray-700 bg-gray-950 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
+                >
+                  {showAllPartners ? "Show top 5" : `Expand ${hiddenPartnerCount} more`}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -776,7 +798,7 @@ export default function DataDashboardContent() {
               </tr>
             </thead>
             <tbody>
-              {data.partner_breakdown.map((row, index) => {
+              {visiblePartnerRows.map((row, index) => {
                 const isTotal = row.partner === "total";
                 return (
                   <tr
