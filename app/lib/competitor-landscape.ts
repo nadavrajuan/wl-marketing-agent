@@ -38,6 +38,14 @@ type ExtractedSnapshot = {
   raw_html: string;
 };
 
+type StructuredProviderCandidate = {
+  name: string;
+  score: number | null;
+  description: string | null;
+  marketing_lines: string[];
+  raw_block: string;
+};
+
 type AlertRecord = {
   id: number;
   source_slug: string;
@@ -299,8 +307,8 @@ function finalizePartnerRows(rows: ExtractedPartner[], source: CompetitorSource)
 }
 
 function scoreFromBlock(block: string) {
-  const match = block.match(/\b(10(?:\.0)?|[1-9]\.\d)\b/);
-  return match ? Number(match[1]) : null;
+  const matches = Array.from(block.matchAll(/\b(10\.0|[5-9]\.\d)\b/g)).map((match) => Number(match[1]));
+  return matches.length > 0 ? matches[0] : null;
 }
 
 function textExcerpt(value: string, limit = 600) {
@@ -322,6 +330,193 @@ function extractVisibleLines($: cheerio.CheerioAPI) {
     });
 
   return lines;
+}
+
+function looksLikeStructuredProviderArray(items: unknown[]): boolean {
+  if (!Array.isArray(items) || items.length === 0) return false;
+  return items.some((item) => {
+    if (!item || typeof item !== "object") return false;
+    const row = item as Record<string, unknown>;
+    return typeof row.name === "string" || typeof row.title === "string";
+  });
+}
+
+function toStructuredProviderCandidate(item: Record<string, unknown>): StructuredProviderCandidate | null {
+  const rawName =
+    (typeof item.name === "string" && item.name) ||
+    (typeof item.title === "string" && item.title) ||
+    (typeof item.providerName === "string" && item.providerName) ||
+    "";
+  const canonicalName = canonicalizePartnerName(rawName);
+  if (!canonicalName) return null;
+
+  const rawScore =
+    (item.providerRating as { value?: number | string } | undefined)?.value ??
+    (typeof item.score === "string" || typeof item.score === "number" ? item.score : null);
+  const numericScore = rawScore == null ? null : Number(rawScore);
+
+  const features =
+    Array.isArray(item.providerFeatures)
+      ? item.providerFeatures
+          .map((entry) => (entry && typeof entry === "object" ? (entry as { text?: string }).text : null))
+          .filter((entry): entry is string => Boolean(entry))
+      : Array.isArray(item.itemBullets)
+        ? item.itemBullets
+            .map((entry) => (entry && typeof entry === "object" ? (entry as { text?: string }).text : null))
+            .filter((entry): entry is string => Boolean(entry))
+        : [];
+
+  const cleanedLines = features
+    .map((line) => cleanDescription(line))
+    .filter((line): line is string => Boolean(line))
+    .slice(0, 4);
+
+  return {
+    name: canonicalName,
+    score: Number.isFinite(numericScore) ? numericScore : null,
+    description: cleanedLines[0] || null,
+    marketing_lines: cleanedLines,
+    raw_block: textExcerpt(JSON.stringify(item), 1200),
+  };
+}
+
+function collectStructuredProviderArrays(node: unknown, acc: Record<string, unknown>[][] = []) {
+  if (!node || typeof node !== "object") return acc;
+
+  if (Array.isArray(node)) {
+    if (looksLikeStructuredProviderArray(node)) {
+      acc.push(node as Record<string, unknown>[]);
+    }
+    for (const entry of node) {
+      collectStructuredProviderArrays(entry, acc);
+    }
+    return acc;
+  }
+
+  const obj = node as Record<string, unknown>;
+  for (const value of Object.values(obj)) {
+    collectStructuredProviderArrays(value, acc);
+  }
+  return acc;
+}
+
+function extractJsonScriptContent(html: string, scriptId: string) {
+  const match = html.match(new RegExp(`<script[^>]*id=["']${scriptId}["'][^>]*>([\\s\\S]*?)<\\/script>`, "i"));
+  return match?.[1] || null;
+}
+
+function extractBalancedArray(source: string, startIndex: number) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let start = -1;
+
+  for (let i = startIndex; i < source.length; i += 1) {
+    const char = source[i];
+    if (start === -1) {
+      if (char === "[") {
+        start = i;
+        depth = 1;
+      }
+      continue;
+    }
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === "\"") {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === "[") depth += 1;
+    if (char === "]") depth -= 1;
+    if (depth === 0) {
+      return source.slice(start, i + 1);
+    }
+  }
+
+  return null;
+}
+
+function extractStructuredProvidersFromNextData(source: CompetitorSource, html: string): ExtractedPartner[] {
+  const script = extractJsonScriptContent(html, "__NEXT_DATA__");
+  if (!script) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(script);
+  } catch {
+    return [];
+  }
+
+  const candidates = collectStructuredProviderArrays(parsed)
+    .map((items) => items.map(toStructuredProviderCandidate).filter((row): row is StructuredProviderCandidate => Boolean(row)))
+    .filter((items) => items.length > 0);
+
+  if (candidates.length === 0) return [];
+
+  const best = candidates.sort((a, b) => b.length - a.length)[0];
+  return finalizePartnerRows(
+    best.map((item, index) => ({
+      canonical_name: item.name,
+      display_name: item.name,
+      rank: index + 1,
+      score: item.score,
+      description: item.description,
+      marketing_lines: item.marketing_lines,
+      raw_block: item.raw_block,
+    })),
+    source,
+  );
+}
+
+function extractStructuredProvidersFromEscapedData(source: CompetitorSource, html: string): ExtractedPartner[] {
+  const normalized = html
+    .replace(/\\"/g, "\"")
+    .replace(/\\u0026/g, "&")
+    .replace(/\\u003c/g, "<")
+    .replace(/\\u003e/g, ">")
+    .replace(/\\n/g, "\n");
+
+  const dataIndex = normalized.indexOf("\"data\":[");
+  if (dataIndex === -1) return [];
+
+  const arrayStart = normalized.indexOf("[", dataIndex);
+  if (arrayStart === -1) return [];
+
+  const arrayText = extractBalancedArray(normalized, arrayStart);
+  if (!arrayText) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(arrayText);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+
+  const structured = parsed
+    .map((item) => (item && typeof item === "object" ? toStructuredProviderCandidate(item as Record<string, unknown>) : null))
+    .filter((row): row is StructuredProviderCandidate => Boolean(row));
+
+  return finalizePartnerRows(
+    structured.map((item, index) => ({
+      canonical_name: item.name,
+      display_name: item.name,
+      rank: index + 1,
+      score: item.score,
+      description: item.description,
+      marketing_lines: item.marketing_lines,
+      raw_block: item.raw_block,
+    })),
+    source,
+  );
 }
 
 function inferPartnerRowsFromLines(lines: string[], source: CompetitorSource): ExtractedPartner[] {
@@ -376,7 +571,13 @@ function extractSnapshotFromHtml(source: CompetitorSource, html: string, finalUr
     normalizeWhitespace($('meta[property="og:description"]').attr("content")) ||
     null;
 
-  let partners = inferPartnerRowsFromLines(lines, source);
+  let partners = extractStructuredProvidersFromNextData(source, html);
+  if (partners.length === 0) {
+    partners = extractStructuredProvidersFromEscapedData(source, html);
+  }
+  if (partners.length === 0) {
+    partners = inferPartnerRowsFromLines(lines, source);
+  }
   if (partners.length === 0) {
     partners = fallbackSeedRows(source);
   }
