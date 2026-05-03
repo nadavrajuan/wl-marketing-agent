@@ -733,6 +733,76 @@ async def research_stream(
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+# ─── Research API — Prompt get/set ───────────────────────────────────────────
+
+RESEARCH_PROMPT_KEYS = ["research_system", "research_step_human"]
+
+@app.get("/agent/api/research/prompt")
+async def research_get_prompt(
+    _: None = Depends(require_research_token),
+    db: Session = Depends(get_db),
+):
+    from database import DEFAULT_PROMPTS
+    result = {}
+    for key in RESEARCH_PROMPT_KEYS:
+        result[key] = {
+            "content":      get_prompt(db, key),
+            "display_name": DEFAULT_PROMPTS[key]["display_name"],
+            "description":  DEFAULT_PROMPTS[key]["description"],
+        }
+    return JSONResponse(result)
+
+
+@app.post("/agent/api/research/prompt")
+async def research_save_prompt(
+    request: Request,
+    _: None = Depends(require_research_token),
+    db: Session = Depends(get_db),
+):
+    body = await request.json()
+    saved = []
+    for key in RESEARCH_PROMPT_KEYS:
+        if key in body and body[key]:
+            from database import DEFAULT_PROMPTS
+            row = db.query(Prompt).filter_by(name=key).first()
+            if row:
+                row.content    = body[key]
+                row.updated_at = datetime.utcnow()
+            else:
+                db.add(Prompt(
+                    name=key,
+                    display_name=DEFAULT_PROMPTS[key]["display_name"],
+                    description=DEFAULT_PROMPTS[key]["description"],
+                    content=body[key],
+                ))
+            saved.append(key)
+    db.commit()
+    return JSONResponse({"ok": True, "saved": saved})
+
+
+@app.post("/agent/api/research/prompt/reset")
+async def research_reset_prompt(
+    request: Request,
+    _: None = Depends(require_research_token),
+    db: Session = Depends(get_db),
+):
+    body = await request.json()
+    key  = body.get("key")
+    if key not in RESEARCH_PROMPT_KEYS:
+        raise HTTPException(status_code=400, detail="Unknown prompt key")
+    from database import DEFAULT_PROMPTS
+    row = db.query(Prompt).filter_by(name=key).first()
+    default_content = DEFAULT_PROMPTS[key]["content"]
+    if row:
+        row.content    = default_content
+        row.updated_at = datetime.utcnow()
+    else:
+        db.add(Prompt(name=key, display_name=DEFAULT_PROMPTS[key]["display_name"],
+                      description=DEFAULT_PROMPTS[key]["description"], content=default_content))
+    db.commit()
+    return JSONResponse({"ok": True, "content": default_content})
+
+
 # ─── Research API — Lucky candidates ──────────────────────────────────────────
 
 @app.get("/agent/api/research/lucky")

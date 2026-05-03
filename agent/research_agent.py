@@ -9,6 +9,7 @@ Graph: SELECT_START → BUILD_PLAN → [RESEARCH_STEP]* → GENERATE_SLIDES → 
 """
 import json
 import os
+import random
 import re
 import time
 import urllib.request
@@ -45,21 +46,23 @@ Key metrics: Quiz Start (top of funnel), Purchase (goal), CVR = Purchases/Quiz S
 Landing page variants are tracked by the 'dti' field (e.g. r4, j4, i2).
 """
 
-RESEARCH_SYSTEM_PROMPT = """You are a senior performance marketing researcher, funnel strategist,
-and competitive intelligence analyst.
+def _load_research_prompts(db_session=None) -> dict[str, str]:
+    """Load research prompts from DB or fall back to DEFAULT_PROMPTS."""
+    from database import DEFAULT_PROMPTS
+    if db_session is None:
+        return {
+            "research_system":     DEFAULT_PROMPTS["research_system"]["content"],
+            "research_step_human": DEFAULT_PROMPTS["research_step_human"]["content"],
+        }
+    from database import get_prompt
+    return {
+        "research_system":     get_prompt(db_session, "research_system"),
+        "research_step_human": get_prompt(db_session, "research_step_human"),
+    }
 
-You do not begin by looking for what is broken.
-You begin from one concrete starting point and investigate outward.
 
-Your job is to follow the most interesting threads, build evidence-based hypotheses,
-and produce specific testable recommendations.
-
-You think in terms of the full funnel:
-Keyword/intent → Ad copy → Our landing page → Partner table → Partner/brand page → Conversion → Competitors
-
-You always distinguish between: evidence | assumption | hypothesis | recommendation | open_question
-
-You must respond ONLY with valid JSON. No other text."""
+# Fallback constant used when no DB session is available
+RESEARCH_SYSTEM_PROMPT = ""  # populated at runtime from DB
 
 
 # ─── State ────────────────────────────────────────────────────────────────────
@@ -177,24 +180,24 @@ def select_starting_point(state: ResearchState) -> dict:
     # For "lucky" mode: query interesting candidates and let LLM pick
     if sp_type == "lucky" or not sp_value:
         candidates = _get_lucky_candidates()
-        llm = create_llm(model=state.get("model"), temperature=0.7)
+        llm = create_llm(model=state.get("model"), temperature=1.0)
         response = llm.invoke([
             SystemMessage(content=DOMAIN_CONTEXT),
-            HumanMessage(content=f"""Here are interesting marketing assets from our data.
-Pick the SINGLE most interesting one to start a research run.
-Choose something surprising, strategically interesting, or worth deep investigation —
-not just the biggest item.
+            HumanMessage(content=f"""Here are marketing assets from our data, presented in random order.
+Pick ONE to start a research run. Do NOT always pick the highest-volume item.
+Favor something surprising, ambiguous, strategically interesting, or underexplored.
+Consider: volatile CVR, large revenue gap, multi-partner complexity, keyword-to-page mismatch potential.
 
-Candidates:
+Candidates (shuffled — do not default to the first one):
 {json.dumps(candidates, indent=2, default=str)}
 
-Research depth requested: {depth}
+Research depth: {depth}
 
 Respond ONLY with this JSON:
 {{
   "starting_point_type": "keyword|landing_page|campaign|partner",
   "starting_point_value": "the exact value",
-  "starting_point_reason": "2-3 sentences explaining why this is interesting to investigate"
+  "starting_point_reason": "2-3 sentences on what makes this worth investigating (not just 'high volume')"
 }}"""),
         ])
         try:
@@ -239,11 +242,15 @@ Respond ONLY with plain text (no JSON).
 
 
 def _get_lucky_candidates() -> list[dict]:
+    """Return a varied pool of candidate starting points with randomized selection."""
     candidates = []
 
-    # Top keywords by purchase volume
+    # Strategy: rotate which angle we emphasize so LLM sees different mixes each time
+    strategy = random.choice(["volume", "cvr", "revenue", "surprising"])
+
+    # Keywords — pull a bigger pool and sample randomly to avoid always showing top-5
     try:
-        rows = run_query("""
+        all_kw = run_query("""
             SELECT keyword,
               COUNT(*) FILTER (WHERE funnel_step='Quiz Start') AS starts,
               COUNT(*) FILTER (WHERE funnel_step='Purchase') AS purchases,
@@ -253,55 +260,97 @@ def _get_lucky_candidates() -> list[dict]:
             FROM conversions
             WHERE keyword IS NOT NULL AND keyword != ''
             GROUP BY keyword
-            HAVING COUNT(*) FILTER (WHERE funnel_step='Quiz Start') > 20
-            ORDER BY starts DESC LIMIT 15
-        """, max_rows=15)
-        for r in rows:
+            HAVING COUNT(*) FILTER (WHERE funnel_step='Quiz Start') > 10
+            ORDER BY starts DESC LIMIT 40
+        """, max_rows=40)
+        # Sample 8-10 from the pool with bias toward current strategy
+        if strategy == "surprising":
+            # Mid-tier keywords (rank 10-30) — unexpected choices
+            pool = all_kw[10:30] if len(all_kw) > 10 else all_kw
+        elif strategy == "cvr":
+            # Sort by CVR descending and pick from top half
+            pool = sorted(all_kw, key=lambda r: float(r.get("cvr") or 0), reverse=True)[:20]
+        else:
+            pool = all_kw[:20]
+        sample = random.sample(pool, min(8, len(pool)))
+        for r in sample:
             candidates.append({"type": "keyword", "value": r["keyword"],
                                 "starts": r["starts"], "purchases": r["purchases"],
-                                "cvr": r["cvr"], "revenue": float(r["revenue"] or 0)})
+                                "cvr": float(r["cvr"] or 0),
+                                "revenue": float(r["revenue"] or 0),
+                                "note": f"{strategy}-strategy pick"})
     except Exception:
         pass
 
-    # Landing page variants
+    # Landing page variants — always included for variety
     try:
         rows = run_query("""
             SELECT dti,
               COUNT(*) FILTER (WHERE funnel_step='Quiz Start') AS starts,
               COUNT(*) FILTER (WHERE funnel_step='Purchase') AS purchases,
               ROUND(COUNT(*) FILTER (WHERE funnel_step='Purchase')::numeric /
-                NULLIF(COUNT(*) FILTER (WHERE funnel_step='Quiz Start'),0)*100,1) AS cvr
+                NULLIF(COUNT(*) FILTER (WHERE funnel_step='Quiz Start'),0)*100,1) AS cvr,
+              COUNT(DISTINCT affiliate) AS partner_count
             FROM conversions
             WHERE dti IS NOT NULL AND dti != ''
             GROUP BY dti
-            HAVING COUNT(*) FILTER (WHERE funnel_step='Quiz Start') > 30
-            ORDER BY starts DESC LIMIT 8
-        """, max_rows=8)
-        for r in rows:
+            HAVING COUNT(*) FILTER (WHERE funnel_step='Quiz Start') > 20
+            ORDER BY starts DESC LIMIT 10
+        """, max_rows=10)
+        pool = rows
+        sample = random.sample(pool, min(4, len(pool)))
+        for r in sample:
             candidates.append({"type": "landing_page", "value": r["dti"],
-                                "starts": r["starts"], "purchases": r["purchases"], "cvr": r["cvr"]})
+                                "starts": r["starts"], "purchases": r["purchases"],
+                                "cvr": float(r["cvr"] or 0),
+                                "partner_count": r.get("partner_count", 0)})
     except Exception:
         pass
 
-    # Partners
+    # Partners — included when strategy is revenue or surprising
     try:
         rows = run_query("""
             SELECT affiliate,
               COUNT(*) FILTER (WHERE funnel_step='Quiz Start') AS starts,
               COUNT(*) FILTER (WHERE funnel_step='Purchase') AS purchases,
-              SUM(value) AS revenue
+              SUM(value) AS revenue,
+              ROUND(SUM(value) / NULLIF(COUNT(*) FILTER (WHERE funnel_step='Quiz Start'),0), 2) AS epv
             FROM conversions
             WHERE affiliate IS NOT NULL AND affiliate != ''
             GROUP BY affiliate
             ORDER BY purchases DESC LIMIT 8
         """, max_rows=8)
-        for r in rows:
+        sample = random.sample(rows, min(3, len(rows)))
+        for r in sample:
             candidates.append({"type": "partner", "value": r["affiliate"],
                                 "starts": r["starts"], "purchases": r["purchases"],
-                                "revenue": float(r["revenue"] or 0)})
+                                "revenue": float(r["revenue"] or 0),
+                                "epv": float(r.get("epv") or 0)})
     except Exception:
         pass
 
+    # Campaigns — add for variety
+    try:
+        rows = run_query("""
+            SELECT utm_campaign,
+              COUNT(*) FILTER (WHERE funnel_step='Quiz Start') AS starts,
+              COUNT(*) FILTER (WHERE funnel_step='Purchase') AS purchases,
+              SUM(value) AS revenue
+            FROM conversions
+            WHERE utm_campaign IS NOT NULL AND utm_campaign != ''
+            GROUP BY utm_campaign
+            HAVING COUNT(*) FILTER (WHERE funnel_step='Quiz Start') > 30
+            ORDER BY revenue DESC LIMIT 15
+        """, max_rows=15)
+        if rows:
+            pick = random.choice(rows)
+            candidates.append({"type": "campaign", "value": pick["utm_campaign"],
+                                "starts": pick["starts"], "purchases": pick["purchases"],
+                                "revenue": float(pick["revenue"] or 0)})
+    except Exception:
+        pass
+
+    random.shuffle(candidates)
     return candidates
 
 
@@ -367,7 +416,7 @@ Respond ONLY with this JSON:
 
 # ─── Node: research_step ──────────────────────────────────────────────────────
 
-def research_step(state: ResearchState) -> dict:
+def research_step(state: ResearchState, db_session=None) -> dict:
     cb = state.get("_step_callback")
     iteration = state.get("iteration", 0) + 1
     max_iter  = state.get("max_iterations", 8)
@@ -376,67 +425,29 @@ def research_step(state: ResearchState) -> dict:
         cb(state["run_id"], iteration, "research_step",
            f"Research step {iteration}/{max_iter}: thinking...", "", "", 0)
 
+    prompts     = _load_research_prompts(db_session)
+    system_text = prompts["research_system"] + "\n\n" + DOMAIN_CONTEXT
+    step_tmpl   = prompts["research_step_human"]
+
+    # Fill in all template variables (use .format_map so missing keys don't crash)
+    prompt = step_tmpl.format_map({
+        "starting_point_type":  state.get("starting_point_type", ""),
+        "starting_point_value": state.get("starting_point_value", ""),
+        "starting_point_reason": state.get("starting_point_reason", ""),
+        "current_focus":        state.get("current_focus", ""),
+        "depth":                state.get("depth", "standard"),
+        "iteration":            iteration,
+        "max_iterations":       max_iter,
+        "remaining":            max_iter - iteration,
+        "research_plan":        state.get("research_plan", ""),
+        "actions_taken":        _fmt_actions(state.get("actions_taken", [])),
+        "findings":             _fmt_findings(state.get("findings", [])),
+        "direction_changes":    "; ".join(state.get("direction_changes", [])) or "None",
+    })
+
     llm = create_llm(model=state.get("model"), temperature=0.4)
-
-    prompt = f"""Starting point: [{state.get('starting_point_type')}] "{state.get('starting_point_value')}"
-Why chosen: {state.get('starting_point_reason', '')}
-Current focus: {state.get('current_focus', '')}
-Research depth: {state.get('depth')} — steps {iteration}/{max_iter} remaining: {max_iter - iteration}
-
-Research plan:
-{state.get('research_plan', '')}
-
-Actions taken so far:
-{_fmt_actions(state.get('actions_taken', []))}
-
-Findings accumulated:
-{_fmt_findings(state.get('findings', []))}
-
-Direction changes: {'; '.join(state.get('direction_changes', [])) or 'None'}
-
----
-Decide your NEXT single action. Consider:
-- What thread is most interesting right now?
-- What data would change your hypotheses?
-- Should you pivot direction based on what you've found?
-- If steps remaining < 2, prefer "record_finding" or "finish".
-
-Available actions:
-
-1. query_data — SQL SELECT against public.conversions
-   Columns: id, conversion_at, funnel_step, affiliate, value, platform_id, device,
-   match_type, keyword, utm_campaign, campaign_id, adgroup_id, dti, landing_page_path, user_country
-   Rules: NULLIF for division, LIMIT 50, no INSERT/UPDATE/DELETE
-
-2. crawl_url — Fetch and analyze a real web page
-   Use for: competitor pages, landing pages, partner brand sites
-   Examples: https://top5weightchoices.com, https://ro.co, https://medvi.com,
-   https://hims.com, https://www.noom.com, https://getkos.com, https://calibrate.com
-
-3. record_finding — Save an important insight
-   finding_type: evidence | hypothesis | recommendation | open_question
-
-4. change_direction — Pivot research focus (explain what pulled you)
-
-5. finish — End research, go to slide generation (use when you have 5+ findings or steps < 2)
-
-Respond ONLY with valid JSON:
-{{
-  "thought": "What I'm thinking and why this action next",
-  "action": "query_data|crawl_url|record_finding|change_direction|finish",
-  "sql": "SELECT ...",
-  "url": "https://...",
-  "purpose": "Why I'm running this query or crawl",
-  "finding_type": "evidence|hypothesis|recommendation|open_question",
-  "title": "Short finding title",
-  "content": "Detailed finding content",
-  "confidence": "low|medium|high",
-  "new_focus": "New research direction",
-  "reason": "Why finishing or changing direction"
-}}"""
-
     response = llm.invoke([
-        SystemMessage(content=RESEARCH_SYSTEM_PROMPT + "\n\n" + DOMAIN_CONTEXT),
+        SystemMessage(content=system_text),
         HumanMessage(content=prompt),
     ])
 
@@ -463,6 +474,8 @@ Respond ONLY with valid JSON:
             cb(state["run_id"], iteration, "query_data",
                f"Querying: {purpose}", sql, "", 0)
 
+        rows = []
+        row_count = 0
         try:
             rows = run_query(sql, max_rows=50)
             from tabulate import tabulate
@@ -470,7 +483,6 @@ Respond ONLY with valid JSON:
             row_count  = len(rows)
         except Exception as exc:
             result_str = f"Query error: {exc}"
-            row_count  = 0
 
         if cb:
             cb(state["run_id"], iteration, "query_data",
@@ -729,12 +741,13 @@ def should_continue(state: ResearchState) -> str:
 
 # ─── Build Graph ──────────────────────────────────────────────────────────────
 
-def build_research_graph():
+def build_research_graph(db_session=None):
+    from functools import partial
     graph = StateGraph(ResearchState)
 
     graph.add_node("select_starting_point", select_starting_point)
     graph.add_node("build_plan",            build_plan)
-    graph.add_node("research_step",         research_step)
+    graph.add_node("research_step",         partial(research_step, db_session=db_session))
     graph.add_node("generate_slides",       generate_slides)
 
     graph.set_entry_point("select_starting_point")
@@ -771,7 +784,7 @@ def run_research(
     db_session=None,
     step_callback=None,
 ) -> ResearchState:
-    graph = build_research_graph()
+    graph = build_research_graph(db_session=db_session)
 
     initial_state: ResearchState = {
         "run_id":               run_id,

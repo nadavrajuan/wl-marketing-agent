@@ -106,13 +106,21 @@ export default function ResearchPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-10">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-white tracking-tight">Research Agent</h1>
-        <p className="mt-2 text-gray-400 text-sm max-w-2xl">
-          Start from one marketing asset — keyword, landing page, partner, or URL — and follow the
-          full user journey. The agent investigates outward, surfaces hypotheses, and returns a
-          visual research story with testable ideas.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Research Agent</h1>
+          <p className="mt-2 text-gray-400 text-sm max-w-2xl">
+            Start from one marketing asset — keyword, landing page, partner, or URL — and follow the
+            full user journey. The agent investigates outward, surfaces hypotheses, and returns a
+            visual research story with testable ideas.
+          </p>
+        </div>
+        <button
+          onClick={() => router.push("/research/settings")}
+          className="shrink-0 text-xs text-gray-600 hover:text-gray-400 border border-gray-800 hover:border-gray-600 rounded-lg px-3 py-1.5 transition-all mt-1"
+        >
+          ⚙ Prompts
+        </button>
       </div>
 
       {/* Depth selector */}
