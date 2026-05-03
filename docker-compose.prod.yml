@@ -38,6 +38,7 @@ services:
       NEXT_PUBLIC_AGENT_BASE_URL: /agent/
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@wl-marketing-postgres:5432/${POSTGRES_DB}
       INGEST_API_TOKEN: ${INGEST_API_TOKEN:?INGEST_API_TOKEN is required}
+      AGENT_INTERNAL_URL: http://wl-marketing-agent:8003
       COMPETITOR_SYNC_TOKEN: ${COMPETITOR_SYNC_TOKEN:-}
     volumes:
       - ./secrets/bigquery-service-account.json:/run/secrets/bigquery-service-account.json:ro

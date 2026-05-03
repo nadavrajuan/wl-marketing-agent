@@ -96,6 +96,41 @@ class User(Base):
     created_at   = Column(DateTime, default=datetime.utcnow)
 
 
+class ResearchRun(Base):
+    __tablename__ = "research_runs"
+    run_id               = Column(String, primary_key=True)
+    created_at           = Column(DateTime, default=datetime.utcnow)
+    status               = Column(String, default="running")  # running | completed | failed | stopped
+    starting_point_type  = Column(String)   # keyword | url | landing_page | campaign | partner | brand | competitor_url | question | lucky
+    starting_point_value = Column(Text)
+    starting_point_reason= Column(Text)
+    depth                = Column(String, default="standard")  # quick | standard | deep | extreme
+    research_plan        = Column(Text)
+    slides_json          = Column(Text, default="[]")
+    findings_json        = Column(Text, default="[]")
+    executive_summary    = Column(Text)
+    model                = Column(String)
+    iteration_count      = Column(Integer, default=0)
+    duration_seconds     = Column(Float, nullable=True)
+    error_log            = Column(Text, default="[]")
+
+
+class ResearchStep(Base):
+    __tablename__ = "research_steps"
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    run_id         = Column(String, ForeignKey("research_runs.run_id"))
+    step_number    = Column(Integer)
+    action_type    = Column(String)   # query_data | crawl_url | record_finding | change_direction | build_plan | generate_slides
+    title          = Column(String)
+    thought        = Column(Text)
+    data_source    = Column(Text)     # SQL or URL
+    data_result    = Column(Text)
+    finding_type   = Column(String)   # evidence | hypothesis | recommendation | open_question
+    finding_content= Column(Text)
+    confidence     = Column(String)   # low | medium | high
+    created_at     = Column(DateTime, default=datetime.utcnow)
+
+
 # ─── DB Helpers ──────────────────────────────────────────────────────────────
 
 def get_db():

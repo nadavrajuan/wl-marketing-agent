@@ -2,6 +2,7 @@
 WL Marketing Agent — FastAPI Web Server
 Adapted from Codere AI architecture.
 """
+import asyncio
 import json
 import os
 import re
@@ -26,6 +27,7 @@ from sqlalchemy.exc import OperationalError
 from database import (
     init_db, SessionLocal, get_db,
     Run, RunStep, Prompt, AppConfig, RunChatMessage, User,
+    ResearchRun, ResearchStep,
     get_config, set_config, get_prompt, authenticate, update_run, save_step,
     DEFAULT_PROMPTS,
 )
@@ -515,6 +517,234 @@ Be specific with numbers. Keep responses focused and actionable."""
             yield f"data: {json.dumps({'done': True})}\n\n"
 
     return StreamingResponse(stream_response(), media_type="text/event-stream")
+
+
+# ─── Research API — Auth helper ───────────────────────────────────────────────
+
+def require_research_token(authorization: str | None = Header(default=None)) -> None:
+    """Research endpoints share the ingest token for internal Next.js → Agent calls."""
+    expected = require_env("INGEST_API_TOKEN")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    if authorization.removeprefix("Bearer ").strip() != expected:
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+
+# ─── Research API — Start run ─────────────────────────────────────────────────
+
+@app.post("/agent/api/research/run")
+async def research_start_run(
+    request: Request,
+    _: None = Depends(require_research_token),
+):
+    body = await request.json()
+    sp_type  = body.get("starting_point_type", "lucky")
+    sp_value = body.get("starting_point_value", "")
+    depth    = body.get("depth", "standard")
+    model    = body.get("model") or os.getenv("OPENAI_MODEL", "gpt-4o")
+
+    run_id = str(uuid.uuid4())[:8]
+    db = SessionLocal()
+    db.add(ResearchRun(
+        run_id=run_id,
+        status="running",
+        starting_point_type=sp_type,
+        starting_point_value=sp_value,
+        depth=depth,
+        model=model,
+        created_at=datetime.utcnow(),
+    ))
+    db.commit()
+    db.close()
+
+    def _run_research_bg():
+        from research_agent import run_research
+        agent_db = SessionLocal()
+        start_time = time.time()
+        step_num = [0]
+
+        def step_callback(run_id, iteration, action_type, thought, data_source, data_result, rows):
+            try:
+                step_num[0] += 1
+                agent_db.add(ResearchStep(
+                    run_id=run_id,
+                    step_number=step_num[0],
+                    action_type=action_type,
+                    title=thought[:200] if thought else action_type,
+                    thought=thought,
+                    data_source=data_source[:2000] if data_source else "",
+                    data_result=data_result[:3000] if data_result else "",
+                ))
+                agent_db.commit()
+            except Exception as e:
+                print(f"[research step_callback error] {e}")
+
+        try:
+            final = run_research(
+                run_id=run_id,
+                starting_point_type=sp_type,
+                starting_point_value=sp_value,
+                depth=depth,
+                model=model,
+                db_session=agent_db,
+                step_callback=step_callback,
+            )
+            duration = time.time() - start_time
+            agent_db.query(ResearchRun).filter_by(run_id=run_id).update({
+                "status":               "completed",
+                "starting_point_type":  final.get("starting_point_type", sp_type),
+                "starting_point_value": final.get("starting_point_value", sp_value),
+                "starting_point_reason": final.get("starting_point_reason", ""),
+                "research_plan":        final.get("research_plan", ""),
+                "slides_json":          json.dumps(final.get("slides", [])),
+                "findings_json":        json.dumps(final.get("findings", [])),
+                "executive_summary":    final.get("executive_summary", ""),
+                "iteration_count":      final.get("iteration", 0),
+                "duration_seconds":     round(duration, 1),
+                "error_log":            json.dumps(final.get("error_log", [])),
+            })
+            agent_db.commit()
+        except Exception as e:
+            import traceback
+            print(f"[research error] {traceback.format_exc()}")
+            agent_db.query(ResearchRun).filter_by(run_id=run_id).update({
+                "status":    "failed",
+                "error_log": json.dumps([str(e)]),
+                "duration_seconds": round(time.time() - start_time, 1),
+            })
+            agent_db.commit()
+        finally:
+            agent_db.close()
+
+    threading.Thread(target=_run_research_bg, daemon=True).start()
+    return JSONResponse({"run_id": run_id, "status": "started"})
+
+
+# ─── Research API — List runs ─────────────────────────────────────────────────
+
+@app.get("/agent/api/research/runs")
+async def research_list_runs(
+    _: None = Depends(require_research_token),
+    db: Session = Depends(get_db),
+):
+    runs = db.query(ResearchRun).order_by(ResearchRun.created_at.desc()).limit(50).all()
+    return JSONResponse([{
+        "run_id":               r.run_id,
+        "status":               r.status,
+        "created_at":           r.created_at.isoformat() if r.created_at else None,
+        "starting_point_type":  r.starting_point_type,
+        "starting_point_value": r.starting_point_value,
+        "depth":                r.depth,
+        "iteration_count":      r.iteration_count,
+        "duration_seconds":     r.duration_seconds,
+        "executive_summary":    (r.executive_summary or "")[:200],
+    } for r in runs])
+
+
+# ─── Research API — Run detail ────────────────────────────────────────────────
+
+@app.get("/agent/api/research/runs/{run_id}")
+async def research_run_detail(
+    run_id: str,
+    _: None = Depends(require_research_token),
+    db: Session = Depends(get_db),
+):
+    run = db.query(ResearchRun).filter_by(run_id=run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Research run not found")
+    steps = db.query(ResearchStep).filter_by(run_id=run_id).order_by(ResearchStep.step_number).all()
+    return JSONResponse({
+        "run_id":               run.run_id,
+        "status":               run.status,
+        "created_at":           run.created_at.isoformat() if run.created_at else None,
+        "starting_point_type":  run.starting_point_type,
+        "starting_point_value": run.starting_point_value,
+        "starting_point_reason": run.starting_point_reason,
+        "depth":                run.depth,
+        "research_plan":        run.research_plan,
+        "slides":               json.loads(run.slides_json or "[]"),
+        "findings":             json.loads(run.findings_json or "[]"),
+        "executive_summary":    run.executive_summary,
+        "iteration_count":      run.iteration_count,
+        "duration_seconds":     run.duration_seconds,
+        "error_log":            json.loads(run.error_log or "[]"),
+        "steps": [{
+            "step_number":   s.step_number,
+            "action_type":   s.action_type,
+            "title":         s.title,
+            "thought":       s.thought,
+            "data_source":   s.data_source,
+            "data_result":   s.data_result,
+            "finding_type":  s.finding_type,
+            "finding_content": s.finding_content,
+            "confidence":    s.confidence,
+            "created_at":    s.created_at.isoformat() if s.created_at else None,
+        } for s in steps],
+    })
+
+
+# ─── Research API — SSE stream ────────────────────────────────────────────────
+
+@app.get("/agent/api/research/runs/{run_id}/stream")
+async def research_stream(
+    run_id: str,
+    _: None = Depends(require_research_token),
+):
+    async def event_generator():
+        last_step = 0
+        while True:
+            db = SessionLocal()
+            try:
+                run = db.query(ResearchRun).filter_by(run_id=run_id).first()
+                if not run:
+                    yield f"data: {json.dumps({'event': 'error', 'message': 'Run not found'})}\n\n"
+                    return
+
+                new_steps = (
+                    db.query(ResearchStep)
+                    .filter(ResearchStep.run_id == run_id, ResearchStep.step_number > last_step)
+                    .order_by(ResearchStep.step_number)
+                    .all()
+                )
+                for step in new_steps:
+                    payload = {
+                        "event": "step",
+                        "step": {
+                            "step_number": step.step_number,
+                            "action_type": step.action_type,
+                            "title":       step.title,
+                            "thought":     (step.thought or "")[:300],
+                        },
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                    last_step = step.step_number
+
+                status = run.status
+            finally:
+                db.close()
+
+            if status in ("completed", "failed", "stopped"):
+                yield f"data: {json.dumps({'event': 'done', 'status': status})}\n\n"
+                return
+
+            await asyncio.sleep(2)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ─── Research API — Lucky candidates ──────────────────────────────────────────
+
+@app.get("/agent/api/research/lucky")
+async def research_lucky_candidates(
+    _: None = Depends(require_research_token),
+):
+    from research_agent import _get_lucky_candidates
+    try:
+        candidates = _get_lucky_candidates()
+        return JSONResponse({"candidates": candidates})
+    except Exception as exc:
+        return JSONResponse({"candidates": [], "error": str(exc)})
 
 
 # ─── Entrypoint ───────────────────────────────────────────────────────────────

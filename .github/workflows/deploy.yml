@@ -137,6 +137,7 @@ jobs:
             BIGQUERY_DATASET=${{ secrets.BIGQUERY_DATASET }}
             GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/bigquery-service-account.json
             INGEST_API_TOKEN=${{ secrets.INGEST_API_TOKEN }}
+            AGENT_INTERNAL_URL=http://wl-marketing-agent:8003
             COMPETITOR_SYNC_TOKEN=${{ secrets.COMPETITOR_SYNC_TOKEN }}
             TRAEFIK_BASIC_AUTH_USERS=${{ secrets.TRAEFIK_BASIC_AUTH_USERS }}
             EOF
