@@ -94,20 +94,21 @@ DATASET WeightAgent ────────────────────
 TABLE weightagent.WeightAgent.visits  (~105k rows, session-level)
   id (STRING, PK → conversions.visit_id),
   platform_id (STRING: 'bing' | 'google' | 'organic'),
-  entered_at_date (DATE), entered_at (INT64 unix ms),
+  entered_at_date (DATE), entered_at (INT64 unix SECONDS — use TIMESTAMP_SECONDS()),
   campaign_id (STRING, raw numeric UTM campaign ID — NOT a campaign name),
   adgroup_id (STRING, raw numeric UTM ad group ID),
   creative (STRING, ad id), msclkid (STRING, Bing click id), gclid (STRING, Google click id),
   device (STRING: c=desktop, m=mobile, t=tablet),
   match_type (STRING: e=exact, p=phrase, b=broad), network (STRING),
   dti (STRING, landing page variant: r4, j4, c9, i2, t3, u8, c6, a5, q7, q8 …),
-  landing_page (STRING, full URL), user_country (STRING)
+  landing_page (STRING, full URL with all UTM params), user_country (STRING)
 
 TABLE weightagent.WeightAgent.conversions  (~15k rows, funnel events)
   id (STRING), visit_id (STRING → joins to visits.id),
-  conversion_at (INT64, Unix ms — use TIMESTAMP_MILLIS() to convert),
+  conversion_at (INT64, Unix SECONDS — use TIMESTAMP_SECONDS(conversion_at) to convert),
   value (STRING → SAFE_CAST(value AS FLOAT64) for math; USD revenue),
   affiliate_value (STRING), projected_value (STRING),
+  conversion_type_display_name (STRING: 'Purchase' | 'Add to Cart' | 'Quiz Start' | 'Reversed Purchase' | ...),
   funnel_step (STRING: 'other' | 'step_1' | 'step_2' | 'step_3'),
   funnel_step_description (STRING: 'Quiz Start' | 'Lead' | NULL),
   brand_display_name (STRING: 'Medvi' | 'Ro' | 'SkinnyRX' | 'Sprout' | 'Eden' | 'Hers' | 'Remedy'),
@@ -219,6 +220,21 @@ GOOGLE KEYWORD+SPEND FILTERED BY CAMPAIGN NAME:
 NOTE: For KeywordStats/SearchQueryStats do NOT filter _DATA_DATE = _LATEST_DATE —
       segments_date is always < _LATEST_DATE by design. Just filter by segments_date.
 
+TABLE weightagent.GoogleAds.ads_AdGroup_4808949235  (ad group entities)
+  ad_group_id (INTEGER), campaign_id (INTEGER),
+  ad_group_name (STRING), ad_group_status (STRING),
+  _DATA_DATE (DATE), _LATEST_DATE (DATE)
+  → Use WHERE _DATA_DATE = _LATEST_DATE to get current entities
+
+TABLE weightagent.GoogleAds.ads_AdBasicStats_4808949235  (daily per-ad stats, used by dashboard)
+  segments_date (DATE), _DATA_DATE (DATE), _LATEST_DATE (DATE),
+  ad_group_id (INTEGER), campaign_id (INTEGER),
+  ad_group_ad_ad_id (INTEGER),
+  segments_device (STRING: DESKTOP | MOBILE | TABLET),
+  metrics_impressions (INTEGER), metrics_clicks (INTEGER),
+  metrics_cost_micros (INTEGER, ÷1e6 = USD), metrics_conversions (FLOAT64)
+  → Do NOT filter _DATA_DATE = _LATEST_DATE on this stats table — filter by segments_date
+
 TABLE weightagent.GoogleAds.ads_SearchQueryStats_4808949235  (actual search terms)
   segments_date (DATE), _DATA_DATE (DATE), _LATEST_DATE (DATE),
   search_term_view_search_term (STRING), segments_search_term_match_type (STRING),
@@ -250,10 +266,12 @@ RSA AD QUERY EXAMPLE (use _DATA_DATE = _LATEST_DATE here — it IS an entity tab
 
 General rules:
 - ALWAYS use full table paths: weightagent.DatasetName.table_name
-- conversion_at is INT64 unix ms — use TIMESTAMP_MILLIS(conversion_at) to convert
+- conversion_at AND entered_at are INT64 unix SECONDS — use TIMESTAMP_SECONDS() (NOT MILLIS)
 - value/affiliate_value/projected_value in conversions are STRING — SAFE_CAST(value AS FLOAT64)
 - LIMIT 50 on all queries; no INSERT/UPDATE/DELETE/MERGE
 - cost_micros ÷ 1e6 = USD
+- For KeywordStats/SearchQueryStats/AdBasicStats: do NOT filter _DATA_DATE = _LATEST_DATE — use segments_date
+- For entity tables (Campaign, AdGroup, Keyword, Ad): use WHERE _DATA_DATE = _LATEST_DATE
 """
 
 

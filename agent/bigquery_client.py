@@ -114,14 +114,8 @@ def get_inventory_summary() -> list[dict[str, Any]]:
            DATE(TIMESTAMP_SECONDS(MAX(conversion_at)))
     FROM `{PROJECT_ID}.{DATASET_ID}.conversions`
     UNION ALL
-    SELECT 'google_ad_data', COUNT(*), MIN(date), MAX(date)
-    FROM `{PROJECT_ID}.{DATASET_ID}.google_ad_data`
-    UNION ALL
-    SELECT 'bing_ad_data', COUNT(*), MIN(data_date), MAX(data_date)
-    FROM `{PROJECT_ID}.{DATASET_ID}.bing_ad_data`
-    UNION ALL
-    SELECT 'google_click_stats', COUNT(*), MIN(segments_date), MAX(segments_date)
-    FROM `{PROJECT_ID}.{GOOGLE_ADS_DATASET_ID}.ads_ClickStats_4808949235`
+    SELECT 'bing_ad_performance', COUNT(*), MIN(data_date), MAX(data_date)
+    FROM `{PROJECT_ID}.BingAds.ad_performance`
     UNION ALL
     SELECT 'google_keyword_stats', COUNT(*), MIN(segments_date), MAX(segments_date)
     FROM `{PROJECT_ID}.{GOOGLE_ADS_DATASET_ID}.ads_KeywordStats_4808949235`
