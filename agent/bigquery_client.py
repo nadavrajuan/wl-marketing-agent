@@ -103,6 +103,24 @@ def get_table_preview(table_name: str, limit: int = 5, order_by: str | None = No
     return run_query(sql, max_rows=limit)
 
 
+def get_search_query_terms_for_clustering(limit: int = 200) -> list[dict[str, Any]]:
+    """Fetch top search query terms (by clicks) for embedding-based clustering."""
+    sql = f"""
+    SELECT
+        search_term_view_search_term AS search_query,
+        SUM(metrics_clicks) AS clicks,
+        ROUND(SUM(metrics_cost_micros) / 1000000, 2) AS spend
+    FROM `{PROJECT_ID}.{GOOGLE_ADS_DATASET_ID}.ads_SearchQueryStats_4808949235`
+    WHERE search_term_view_search_term IS NOT NULL
+      AND TRIM(search_term_view_search_term) != ''
+    GROUP BY search_query
+    HAVING SUM(metrics_clicks) > 0
+    ORDER BY clicks DESC
+    LIMIT {int(min(limit, 500))}
+    """
+    return run_query(sql, max_rows=limit)
+
+
 def get_inventory_summary() -> list[dict[str, Any]]:
     sql = f"""
     SELECT 'visits' AS table_name, COUNT(*) AS row_count,

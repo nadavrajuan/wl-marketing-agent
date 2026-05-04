@@ -149,7 +149,7 @@ const PARTNER_ALIAS_ENTRIES: Array<[string, string[]]> = [
   ["Vivim", ["vivim"]],
   ["GetThin", ["getthin", "get thin"]],
   ["MyStart Health", ["mystart health", "my start health"]],
-  ["Clinic Secret", ["clinic secret"]],
+  ["Clinic Secret", ["clinic secret", "clinicsecret"]],
   ["Bodybuilding Health +", ["bodybuilding health +", "bodybuilding health"]],
   ["Future Health", ["futurhealth", "future health"]],
   ["JRNYS", ["jrnys"]],
@@ -444,6 +444,39 @@ function extractBalancedArray(source: string, startIndex: number) {
   return null;
 }
 
+function extractSeperiaProviders(source: CompetitorSource, html: string): ExtractedPartner[] {
+  // WordPress Seperia theme stores rankings as custom HTML attributes
+  const pattern = /sep-data-attr-position=(\d+)[^>]*?sep-data-attr-partner-name="([^"]+)"[^>]*?sep-data-attr-partner-score="([^"]*)"/g;
+  const entries: Array<{ position: number; name: string; score: number | null }> = [];
+  const seen = new Set<number>();
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(html)) !== null) {
+    const position = parseInt(match[1], 10);
+    if (!position || seen.has(position)) continue;
+    seen.add(position);
+    const scoreNum = parseFloat(match[3]);
+    entries.push({ position, name: match[2], score: Number.isFinite(scoreNum) ? scoreNum : null });
+  }
+
+  if (entries.length === 0) return [];
+
+  entries.sort((a, b) => a.position - b.position);
+
+  return finalizePartnerRows(
+    entries.map((m) => ({
+      canonical_name: canonicalizePartnerName(m.name) || m.name,
+      display_name: canonicalizePartnerName(m.name) || m.name,
+      rank: m.position,
+      score: m.score,
+      description: null,
+      marketing_lines: [],
+      raw_block: `${m.name} score:${m.score ?? "—"}`,
+    })),
+    source,
+  );
+}
+
 function extractStructuredProvidersFromNextData(source: CompetitorSource, html: string): ExtractedPartner[] {
   const script = extractJsonScriptContent(html, "__NEXT_DATA__");
   if (!script) return [];
@@ -571,7 +604,10 @@ function extractSnapshotFromHtml(source: CompetitorSource, html: string, finalUr
     normalizeWhitespace($('meta[property="og:description"]').attr("content")) ||
     null;
 
-  let partners = extractStructuredProvidersFromNextData(source, html);
+  let partners = extractSeperiaProviders(source, html);
+  if (partners.length === 0) {
+    partners = extractStructuredProvidersFromNextData(source, html);
+  }
   if (partners.length === 0) {
     partners = extractStructuredProvidersFromEscapedData(source, html);
   }

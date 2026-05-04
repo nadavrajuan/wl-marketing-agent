@@ -327,6 +327,10 @@ export default function CompetitorLandscapeContent() {
                   <div key={alert.id} className={`rounded-2xl border p-4 ${severityClass(alert.severity)}`}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span className="text-lg font-bold text-cyan-300">{alert.source_name}</span>
+                          <span className="text-xs text-gray-500">{formatDate(alert.snapshot_date)}</span>
+                        </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-semibold text-white">{alert.title}</span>
                           <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] uppercase tracking-[0.16em] text-gray-300">
@@ -340,7 +344,7 @@ export default function CompetitorLandscapeContent() {
                         </div>
                         <div className="mt-2 text-sm text-gray-300">{alert.summary}</div>
                         <div className="mt-2 text-xs text-gray-500">
-                          {alert.source_name} · {formatDate(alert.snapshot_date)} · captured {formatDateTime(alert.created_at)}
+                          captured {formatDateTime(alert.created_at)}
                         </div>
                       </div>
                       {!alert.is_read && (

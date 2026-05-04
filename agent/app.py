@@ -817,6 +817,146 @@ async def research_lucky_candidates(
         return JSONResponse({"candidates": [], "error": str(exc)})
 
 
+# ─── Search Query Clustering ──────────────────────────────────────────────────
+
+def _kmeans_cosine(embeddings: list[list[float]], k: int, max_iter: int = 100) -> list[int]:
+    """K-means clustering using cosine similarity (via L2 on normalized vectors)."""
+    import numpy as np  # available via google-cloud-bigquery dependency
+
+    X = np.array(embeddings, dtype="float32")
+    norms = np.linalg.norm(X, axis=1, keepdims=True)
+    X = X / np.maximum(norms, 1e-10)
+    n = len(X)
+
+    rng = np.random.default_rng(42)
+    # K-means++ initialization
+    chosen = [int(rng.integers(n))]
+    for _ in range(k - 1):
+        dists = np.min(
+            np.array([np.sum((X - X[c]) ** 2, axis=1) for c in chosen]),
+            axis=0,
+        )
+        probs = dists / dists.sum()
+        chosen.append(int(rng.choice(n, p=probs)))
+    centroids = X[chosen].copy()
+
+    labels = np.zeros(n, dtype=int)
+    for _ in range(max_iter):
+        dists = np.array([np.sum((X - c) ** 2, axis=1) for c in centroids])
+        new_labels = np.argmin(dists, axis=0)
+        if np.all(new_labels == labels):
+            break
+        labels = new_labels
+        for j in range(k):
+            mask = labels == j
+            if mask.any():
+                c = X[mask].mean(axis=0)
+                norm = np.linalg.norm(c)
+                centroids[j] = c / max(float(norm), 1e-10)
+
+    return labels.tolist()
+
+
+@app.post("/agent/api/search-queries/cluster")
+async def search_query_cluster(
+    request: Request,
+    _: None = Depends(require_research_token),
+):
+    body = await request.json()
+    limit = min(300, int(body.get("limit", 200)))
+    k_requested = int(body.get("k", 0))
+
+    from bigquery_client import get_search_query_terms_for_clustering
+    from openai import OpenAI
+
+    try:
+        terms = get_search_query_terms_for_clustering(limit)
+    except Exception as exc:
+        return JSONResponse({"error": f"BigQuery fetch failed: {exc}"}, status_code=500)
+
+    if not terms:
+        return JSONResponse({"clusters": [], "total_terms": 0})
+
+    texts = [t["search_query"] for t in terms]
+    n = len(texts)
+
+    # Auto-choose k: roughly sqrt(n/2), clamped to [3, 18]
+    k = k_requested if k_requested >= 2 else max(3, min(18, round((n / 2) ** 0.5)))
+
+    oai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    try:
+        embed_resp = oai.embeddings.create(model="text-embedding-3-small", input=texts)
+        embeddings = [e.embedding for e in embed_resp.data]
+    except Exception as exc:
+        return JSONResponse({"error": f"Embedding failed: {exc}"}, status_code=500)
+
+    labels = _kmeans_cosine(embeddings, k)
+
+    # Group terms by cluster
+    groups: dict[int, list[dict]] = {}
+    for i, label in enumerate(labels):
+        groups.setdefault(label, []).append(terms[i])
+
+    # Ask GPT to label each cluster
+    cluster_texts_for_llm = "\n\n".join(
+        f"Cluster {cid} ({len(members)} terms):\n" + "\n".join(f"  - {m['search_query']}" for m in members[:15])
+        for cid, members in sorted(groups.items())
+    )
+
+    try:
+        label_resp = oai.chat.completions.create(
+            model=os.getenv("OPENAI_MODEL", "gpt-4o"),
+            temperature=0,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a PPC keyword strategist. Given clusters of search queries from a weight-loss GLP-1 campaign, "
+                        "label each cluster with a short intent label (3-6 words), a one-sentence description, "
+                        "and note if the cluster suggests a keyword gap (intent not obviously covered by existing keywords). "
+                        "Respond as JSON: [{\"cluster_id\": 0, \"label\": \"...\", \"description\": \"...\", \"gap_signal\": true|false}]"
+                    ),
+                },
+                {"role": "user", "content": cluster_texts_for_llm},
+            ],
+            response_format={"type": "json_object"},
+        )
+        import json as _json
+        raw = label_resp.choices[0].message.content or "{}"
+        parsed = _json.loads(raw)
+        # the model may return {"clusters": [...]} or a plain list
+        llm_labels = parsed if isinstance(parsed, list) else parsed.get("clusters", parsed.get("data", []))
+        label_map = {item["cluster_id"]: item for item in llm_labels if isinstance(item, dict)}
+    except Exception:
+        label_map = {}
+
+    clusters = []
+    for cid, members in sorted(groups.items()):
+        llm = label_map.get(cid, {})
+        total_clicks = sum(int(m.get("clicks", 0) or 0) for m in members)
+        clusters.append({
+            "cluster_id": cid,
+            "label": llm.get("label", f"Cluster {cid}"),
+            "description": llm.get("description", ""),
+            "gap_signal": llm.get("gap_signal", False),
+            "term_count": len(members),
+            "total_clicks": total_clicks,
+            "terms": [
+                {
+                    "search_query": m["search_query"],
+                    "clicks": int(m.get("clicks", 0) or 0),
+                    "spend": float(m.get("spend", 0) or 0),
+                }
+                for m in sorted(members, key=lambda x: int(x.get("clicks", 0) or 0), reverse=True)
+            ],
+        })
+
+    clusters.sort(key=lambda c: c["total_clicks"], reverse=True)
+
+    return JSONResponse({"clusters": clusters, "total_terms": n, "k": k})
+
+
 # ─── Entrypoint ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
