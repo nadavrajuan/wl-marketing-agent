@@ -392,6 +392,29 @@ def _fmt_actions(actions: list[dict]) -> str:
     return "\n".join(parts)
 
 
+def _fmt_actions_for_report(actions: list[dict]) -> str:
+    """Full result data for report generation — includes actual query output."""
+    if not actions:
+        return "None."
+    parts = []
+    for a in actions:
+        atype = a.get("action_type", "?")
+        title = a.get("title", "")
+        result = str(a.get("result_preview", ""))
+        if atype in ("query_bigquery", "query_postgres"):
+            sql = str(a.get("data_source", ""))[:400]
+            parts.append(f"[QUERY] {title}\nSQL: {sql}\nRESULT:\n{result[:2000]}")
+        elif atype == "crawl_url":
+            parts.append(f"[CRAWL] {title}\n{result[:600]}")
+        elif atype == "record_finding":
+            parts.append(f"[FINDING] {title}: {result[:400]}")
+        elif atype in ("build_plan", "select_starting_point"):
+            pass  # skip meta-actions from report
+        else:
+            parts.append(f"[{atype}] {title}")
+    return "\n\n---\n\n".join(p for p in parts if p)
+
+
 def _fmt_findings(findings: list[dict]) -> str:
     if not findings:
         return "No findings yet."
@@ -618,50 +641,33 @@ Respond ONLY with valid JSON:
     return state
 
 
-# ─── Phase 2: Build plan ──────────────────────────────────────────────────────
+# ─── Phase 2: Initial angle ───────────────────────────────────────────────────
 
 def _build_plan(state: dict, db_session, cb) -> dict:
+    """Set a minimal initial investigation angle — NOT a rigid multi-step plan."""
     if cb:
-        cb(state["run_id"], 0, "build_plan", "Building research plan…", "", "", 0)
+        cb(state["run_id"], 0, "build_plan", "Choosing initial investigation angle…", "", "", 0)
 
     llm = create_llm(model=state["model"], temperature=0.3)
     resp = llm.invoke([
-        SystemMessage(content=DOMAIN_CONTEXT + "\n\nYou must respond ONLY with valid JSON. No other text."),
-        HumanMessage(content=f"""Create a research plan for:
-
-Starting point: [{state['starting_point_type']}] "{state['starting_point_value']}"
+        SystemMessage(content=DOMAIN_CONTEXT),
+        HumanMessage(content=f"""Starting point: [{state['starting_point_type']}] "{state['starting_point_value']}"
 Why interesting: {state['starting_point_reason']}
-Depth: {state['depth']} ({state['max_iterations']} steps)
+Budget: {state['max_iterations']} investigation steps available.
 
-Notes from previous runs (use as context):
-{state.get('notes', 'none')[:1000]}
+Previous run notes:
+{state.get('notes', 'none')[:600]}
 
-Available data sources:
-- BigQuery (query_bigquery): visits, conversions/funnel events, Bing ad spend, Google keyword stats, RSA ad copy, search terms
-- Crawl (crawl_url): competitor pages, partner brand pages, landing pages
-Respond with JSON:
-{{"plan_summary":"one paragraph","steps":[{{"step":1,"focus":"...","source":"query_bigquery|crawl_url","why":"..."}}]}}"""),
+Write ONE sentence: what is the single most interesting question to answer first about this asset?
+Do NOT write a step-by-step plan. Just the first question to answer with data. Plain text."""),
     ])
 
-    try:
-        d = _parse_json(resp.content)
-        plan_text = d.get("plan_summary", "")
-        steps = d.get("steps", [])
-        plan_full = plan_text + "\n\nSteps:\n" + "\n".join(
-            f"{s['step']}. [{s['source']}] {s['focus']} — {s['why']}" for s in steps
-        )
-    except Exception:
-        plan_full = resp.content
-
-    state["research_plan"] = plan_full
-    state["actions_taken"].append({
-        "action_type": "build_plan",
-        "title":       "Research plan created",
-        "result_preview": plan_full[:300],
-    })
+    angle = resp.content.strip()
+    state["research_plan"] = angle
+    state["current_focus"] = angle
 
     if cb:
-        cb(state["run_id"], 0, "build_plan", plan_full, "", "", 0)
+        cb(state["run_id"], 0, "build_plan", angle, "", "", 0)
     return state
 
 
@@ -875,7 +881,7 @@ def _build_research_graph(
 
                     new_actions.append({
                         "action_type": "query_bigquery", "title": purpose or f"BQ query {iteration}",
-                        "data_source": sql, "result_preview": result_str[:400],
+                        "data_source": sql, "result_preview": result_str[:2000],
                     })
                     current_focus = purpose or current_focus
                     if rows:
@@ -993,44 +999,62 @@ def _build_research_graph(
     return graph.compile()
 
 
-# ─── Phase 4: Generate slides ─────────────────────────────────────────────────
+# ─── Phase 4: Generate data-first report ──────────────────────────────────────
 
 def _generate_slides(state: dict, db_session, cb) -> dict:
     if cb:
         cb(state["run_id"], state["iteration"], "generate_slides",
-           "Generating presentation slides…", "", "", 0)
+           "Compiling report…", "", "", 0)
 
-    llm  = create_llm(model=state["model"], temperature=0.4)
+    llm  = create_llm(model=state["model"], temperature=0.2)
     resp = llm.invoke([
-        SystemMessage(content=DOMAIN_CONTEXT + "\nRespond ONLY with a JSON array."),
-        HumanMessage(content=f"""Research run complete. Generate a presentation.
+        SystemMessage(content=DOMAIN_CONTEXT + "\nRespond ONLY with a JSON array. No prose outside the array."),
+        HumanMessage(content=f"""Research complete. Write a data-first report.
 
 Starting point: [{state['starting_point_type']}] "{state['starting_point_value']}"
-Why: {state['starting_point_reason']}
-Depth: {state['depth']} | Direction changes: {'; '.join(state['direction_changes']) or 'none'}
+Steps taken: {state['iteration']} | Direction changes: {'; '.join(state['direction_changes']) or 'none'}
 
-Research plan:
-{state['research_plan']}
-
-All actions:
-{_fmt_actions(state['actions_taken'])}
+All queries and crawls (with actual results):
+{_fmt_actions_for_report(state['actions_taken'])}
 
 All findings:
 {_fmt_findings(state['findings'])}
 
-Generate 8-16 slides as a JSON array. Slide types:
-executive_summary | starting_point | why_interesting | research_plan |
-data_insight | funnel_view | hypothesis | recommendation |
-competitor_note | open_questions | next_paths
+Write as a JSON array — exactly these 5 sections in this order:
 
-Each slide:
-{{"id":"slide-N","type":"...","title":"...","content":"markdown content, specific numbers","evidence":["..."],"confidence":"low|medium|high","impact":"low|medium|high","effort":"low|medium|high","metric":"success metric if recommendation","tags":["keyword","partner"]}}
+[
+  {{
+    "type": "data",
+    "title": "Data Found",
+    "content": "Paste the actual query results as markdown tables. Use pipe | tables. Include exact numbers — rows, clicks, spend, CVR, etc. This section MUST contain real data from the queries above, not summaries."
+  }},
+  {{
+    "type": "findings",
+    "title": "Key Findings",
+    "content": "Numbered list. Each finding MUST cite a specific number from the data above. No finding without evidence."
+  }},
+  {{
+    "type": "analysis",
+    "title": "Analysis",
+    "content": "What the pattern means. Root causes. What is driving the numbers. What's surprising and why."
+  }},
+  {{
+    "type": "recommendations",
+    "title": "Recommendations",
+    "content": "Numbered list of specific actions. Each must name: which keyword / ad group / campaign, what to change, by how much. No vague advice."
+  }},
+  {{
+    "type": "open_questions",
+    "title": "Still Unknown",
+    "content": "What to investigate next. Specific queries to run. What data would change the conclusions."
+  }}
+]
 
-Rules:
-- executive_summary MUST be first, next_paths MUST be last
-- Use actual data from findings — no generic advice
-- Distinguish evidence from assumptions
-- Return ONLY the JSON array"""),
+STRICT RULES:
+- data section must contain actual tables copied from query results above
+- every finding must reference a number
+- recommendations must be specific (name the asset, give a number)
+- return ONLY the JSON array"""),
     ])
 
     try:
@@ -1038,17 +1062,30 @@ Rules:
         if not isinstance(slides, list):
             slides = []
     except Exception:
-        slides = [{"id": "slide-1", "type": "executive_summary", "title": "Research Complete",
-                   "content": f"Completed {state['iteration']} research steps with {len(state['findings'])} findings.",
-                   "evidence": []}]
+        slides = []
 
-    exec_summary = next((s.get("content", "") for s in slides if s.get("type") == "executive_summary"), "")
+    # Always ensure at least the data section exists
+    if not slides:
+        slides = [
+            {"type": "data", "title": "Data Found",
+             "content": _fmt_actions_for_report(state["actions_taken"])[:3000]},
+            {"type": "findings", "title": "Key Findings",
+             "content": _fmt_findings(state["findings"])},
+        ]
+
+    # Add id field for compatibility
+    for i, s in enumerate(slides):
+        s.setdefault("id", f"section-{i+1}")
+
+    exec_summary = next(
+        (s.get("content", "") for s in slides if s.get("type") in ("findings", "data")), ""
+    )
     state["slides"]            = slides
-    state["executive_summary"] = exec_summary
+    state["executive_summary"] = exec_summary[:500]
 
     if cb:
         cb(state["run_id"], state["iteration"], "generate_slides",
-           f"Generated {len(slides)} slides.", "", "", 0)
+           f"Report compiled — {len(slides)} sections.", "", "", 0)
     return state
 
 
@@ -1091,6 +1128,7 @@ def run_research(
     model: str = None,
     db_session=None,
     step_callback=None,
+    max_iterations: int = 0,
 ) -> dict:
     cb    = step_callback
     model = model or os.getenv("OPENAI_MODEL", "gpt-4o")
@@ -1109,7 +1147,7 @@ def run_research(
         "findings":              [],
         "direction_changes":     [],
         "iteration":             0,
-        "max_iterations":        DEPTH_ITERATIONS.get(depth, 8),
+        "max_iterations":        max_iterations if max_iterations > 0 else DEPTH_ITERATIONS.get(depth, 14),
         "done":                  False,
         "slides":                [],
         "executive_summary":     "",

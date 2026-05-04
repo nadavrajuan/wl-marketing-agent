@@ -538,10 +538,11 @@ async def research_start_run(
     _: None = Depends(require_research_token),
 ):
     body = await request.json()
-    sp_type  = body.get("starting_point_type", "lucky")
-    sp_value = body.get("starting_point_value", "")
-    depth    = body.get("depth", "standard")
-    model    = body.get("model") or os.getenv("OPENAI_MODEL", "gpt-4o")
+    sp_type       = body.get("starting_point_type", "lucky")
+    sp_value      = body.get("starting_point_value", "")
+    depth         = body.get("depth", "standard")
+    model         = body.get("model") or os.getenv("OPENAI_MODEL", "gpt-4o")
+    max_iter_body = int(body.get("max_iterations", 0))
 
     run_id = str(uuid.uuid4())[:8]
     db = SessionLocal()
@@ -588,6 +589,7 @@ async def research_start_run(
                 model=model,
                 db_session=agent_db,
                 step_callback=step_callback,
+                max_iterations=max_iter_body,
             )
             duration = time.time() - start_time
             agent_db.query(ResearchRun).filter_by(run_id=run_id).update({

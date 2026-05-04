@@ -13,20 +13,11 @@ type StartingPointType =
   | "competitor_url"
   | "question";
 
-type Depth = "quick" | "standard" | "deep" | "extreme";
-
 interface LuckyCandidate {
   type: string;
   value: string;
   [key: string]: unknown;
 }
-
-const DEPTH_OPTIONS: { value: Depth; label: string; desc: string; time: string }[] = [
-  { value: "quick", label: "Quick Scan", desc: "Surface-level orientation, 6 steps", time: "~3 min" },
-  { value: "standard", label: "Standard", desc: "Full funnel + ad copy + landing page", time: "~8 min" },
-  { value: "deep", label: "Deep Dive", desc: "Competitor layer, multiple threads", time: "~15 min" },
-  { value: "extreme", label: "Extreme", desc: "Full rabbit-hole, exhaustive evidence", time: "~30 min" },
-];
 
 const SP_TYPES: { value: StartingPointType; label: string; placeholder: string; luckyTypes: string[] }[] = [
   { value: "keyword", label: "Keyword", placeholder: "e.g. tirzepatide for weight loss", luckyTypes: ["keyword"] },
@@ -38,6 +29,29 @@ const SP_TYPES: { value: StartingPointType; label: string; placeholder: string; 
   { value: "competitor_url", label: "Competitor URL", placeholder: "e.g. https://forbes.com/...", luckyTypes: [] },
   { value: "question", label: "Research Question", placeholder: "e.g. Why is mobile CVR lower than desktop?", luckyTypes: [] },
 ];
+
+const DEPTH_BREAKPOINTS = [
+  { at: 6,  label: "Quick",    color: "text-gray-300",   time: "~3 min" },
+  { at: 14, label: "Standard", color: "text-blue-300",   time: "~8 min" },
+  { at: 25, label: "Deep",     color: "text-indigo-300", time: "~15 min" },
+  { at: 50, label: "Advanced", color: "text-purple-300", time: "~30 min" },
+  { at: 100,label: "Extreme",  color: "text-rose-300",   time: "~60+ min" },
+];
+
+function getDepthMeta(n: number) {
+  for (let i = DEPTH_BREAKPOINTS.length - 1; i >= 0; i--) {
+    if (n >= DEPTH_BREAKPOINTS[i].at) return DEPTH_BREAKPOINTS[i];
+  }
+  return DEPTH_BREAKPOINTS[0];
+}
+
+function getDepthKey(n: number): string {
+  if (n <= 8) return "quick";
+  if (n <= 16) return "standard";
+  if (n <= 30) return "deep";
+  if (n <= 60) return "advanced";
+  return "extreme";
+}
 
 function DiceIcon({ className }: { className?: string }) {
   return (
@@ -62,7 +76,7 @@ function DiceIcon({ className }: { className?: string }) {
 
 export default function ResearchPage() {
   const router = useRouter();
-  const [depth, setDepth] = useState<Depth>("standard");
+  const [maxIterations, setMaxIterations] = useState(20);
   const [spType, setSpType] = useState<StartingPointType>("keyword");
   const [spValue, setSpValue] = useState("");
   const [isStarting, setIsStarting] = useState(false);
@@ -72,49 +86,34 @@ export default function ResearchPage() {
   const [luckyCache, setLuckyCache] = useState<LuckyCandidate[]>([]);
   const [usedIndices, setUsedIndices] = useState<Set<number>>(new Set());
 
-  // Reset used indices when type changes
   useEffect(() => {
     setUsedIndices(new Set());
   }, [spType]);
 
   const currentSPMeta = SP_TYPES.find((s) => s.value === spType)!;
   const hasDice = currentSPMeta.luckyTypes.length > 0;
+  const depthMeta = getDepthMeta(maxIterations);
 
   const rollDice = useCallback(async () => {
     if (diceLoading) return;
     setDiceLoading(true);
-
     try {
       let candidates = luckyCache;
-
       if (candidates.length === 0) {
         const res = await fetch("/api/research/lucky");
         const data = await res.json();
         candidates = Array.isArray(data.candidates) ? data.candidates : [];
         setLuckyCache(candidates);
       }
-
-      const matching = candidates
-        .map((c, i) => ({ c, i }))
-        .filter(({ c }) => currentSPMeta.luckyTypes.includes(c.type));
-
-      if (matching.length === 0) {
-        setDiceLoading(false);
-        return;
-      }
-
-      // Prefer unused; reset if all used
+      const matching = candidates.map((c, i) => ({ c, i })).filter(({ c }) => currentSPMeta.luckyTypes.includes(c.type));
+      if (matching.length === 0) { setDiceLoading(false); return; }
       const unused = matching.filter(({ i }) => !usedIndices.has(i));
       const pool = unused.length > 0 ? unused : matching;
-
       const pick = pool[Math.floor(Math.random() * pool.length)];
       setUsedIndices((prev) => new Set([...prev, pick.i]));
       setSpValue(pick.c.value);
-    } catch {
-      // silently fail
-    } finally {
-      setDiceLoading(false);
-    }
+    } catch { /* silently fail */ }
+    finally { setDiceLoading(false); }
   }, [diceLoading, luckyCache, currentSPMeta.luckyTypes, usedIndices]);
 
   async function startRun(type: StartingPointType, value: string) {
@@ -126,13 +125,12 @@ export default function ResearchPage() {
         body: JSON.stringify({
           starting_point_type: type,
           starting_point_value: value,
-          depth,
+          depth: getDepthKey(maxIterations),
+          max_iterations: maxIterations,
         }),
       });
       const data = await res.json();
-      if (data.run_id) {
-        router.push(`/research/${data.run_id}`);
-      }
+      if (data.run_id) router.push(`/research/${data.run_id}`);
     } catch (e) {
       console.error(e);
       setIsStarting(false);
@@ -146,9 +144,7 @@ export default function ResearchPage() {
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Research Agent</h1>
           <p className="mt-2 text-gray-400 text-sm max-w-2xl">
-            Start from one marketing asset — keyword, landing page, partner, or URL — and follow the
-            full user journey. The agent investigates outward, surfaces hypotheses, and returns a
-            visual research story with testable ideas.
+            Forensic investigation of paid search data. Start from one asset and let the data direct the inquiry.
           </p>
         </div>
         <button
@@ -162,27 +158,43 @@ export default function ResearchPage() {
         </button>
       </div>
 
-      {/* Depth selector */}
+      {/* Iteration slider */}
       <div>
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
-          Research Depth
+        <div className="flex items-baseline justify-between mb-4">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
+            Investigation Depth
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className={`text-2xl font-bold tabular-nums ${depthMeta.color}`}>{maxIterations}</span>
+            <span className="text-sm text-gray-400">steps</span>
+            <span className={`text-sm font-semibold ${depthMeta.color}`}>· {depthMeta.label}</span>
+            <span className="text-xs text-gray-600">{depthMeta.time}</span>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {DEPTH_OPTIONS.map((d) => (
-            <button
-              key={d.value}
-              onClick={() => setDepth(d.value)}
-              className={`rounded-xl border p-3 text-left transition-all ${
-                depth === d.value
-                  ? "border-indigo-500 bg-indigo-950 text-white"
-                  : "border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600 hover:text-gray-200"
-              }`}
-            >
-              <div className="text-sm font-semibold">{d.label}</div>
-              <div className="text-xs mt-0.5 opacity-70">{d.desc}</div>
-              <div className="text-xs mt-1 text-gray-500">{d.time}</div>
-            </button>
-          ))}
+
+        <div className="relative">
+          <input
+            type="range"
+            min={3}
+            max={100}
+            step={1}
+            value={maxIterations}
+            onChange={(e) => setMaxIterations(Number(e.target.value))}
+            className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-gray-800 accent-indigo-500"
+          />
+          {/* Breakpoint labels */}
+          <div className="flex justify-between mt-2 px-px">
+            {DEPTH_BREAKPOINTS.map((bp) => (
+              <button
+                key={bp.at}
+                onClick={() => setMaxIterations(bp.at)}
+                className={`text-xs transition-colors ${maxIterations === bp.at ? bp.color + " font-semibold" : "text-gray-600 hover:text-gray-400"}`}
+                style={{ minWidth: 0 }}
+              >
+                {bp.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -195,10 +207,7 @@ export default function ResearchPage() {
           {SP_TYPES.map((s) => (
             <button
               key={s.value}
-              onClick={() => {
-                setSpType(s.value);
-                setSpValue("");
-              }}
+              onClick={() => { setSpType(s.value); setSpValue(""); }}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
                 spType === s.value
                   ? "bg-indigo-600 text-white"
@@ -210,41 +219,27 @@ export default function ResearchPage() {
           ))}
         </div>
 
-        {/* Input with dice button */}
+        {/* Input with dice */}
         <div className="relative">
           <input
             type="text"
             value={spValue}
             onChange={(e) => setSpValue(e.target.value)}
             placeholder={currentSPMeta.placeholder}
-            className={`w-full rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition-colors ${
-              hasDice ? "pr-11" : ""
-            }`}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && spValue.trim()) startRun(spType, spValue.trim());
-            }}
+            className={`w-full rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition-colors ${hasDice ? "pr-11" : ""}`}
+            onKeyDown={(e) => { if (e.key === "Enter" && spValue.trim()) startRun(spType, spValue.trim()); }}
           />
           {hasDice && (
             <button
               onClick={rollDice}
               disabled={diceLoading}
-              title="Roll dice — pick a random suggestion"
+              title="Pick a random suggestion"
               className={`absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-md transition-all ${
-                diceLoading
-                  ? "text-indigo-400 cursor-wait"
-                  : spValue
-                  ? "text-indigo-400 hover:text-indigo-300 hover:bg-indigo-950"
-                  : "text-gray-500 hover:text-gray-300 hover:bg-gray-700"
+                diceLoading ? "text-indigo-400 cursor-wait" : spValue ? "text-indigo-400 hover:text-indigo-300 hover:bg-indigo-950" : "text-gray-500 hover:text-gray-300 hover:bg-gray-700"
               }`}
             >
               {diceLoading ? (
-                <svg
-                  className="w-4 h-4 animate-spin"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
+                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
                 </svg>
               ) : (
@@ -259,10 +254,9 @@ export default function ResearchPage() {
           disabled={isStarting || !spValue.trim()}
           className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 text-sm transition-all"
         >
-          {isStarting ? "Starting research…" : `Start Research from this ${currentSPMeta.label}`}
+          {isStarting ? "Starting…" : `Start ${maxIterations}-step investigation from this ${currentSPMeta.label}`}
         </button>
       </div>
-
     </div>
   );
 }
