@@ -81,25 +81,32 @@ BQ_SCHEMA = """
 ── BigQuery (ALL marketing analytics data lives here) ────────────────────────────
 Project: weightagent
 
+CRITICAL TYPE RULES (read before writing any query):
+- GoogleAds: campaign_id, ad_group_id, ad_group_criterion_criterion_id are all INTEGER
+  → NEVER compare them to a string campaign name; use ads_Campaign_4808949235 to map name→id
+- Bing campaigns are named like "Search-generics-[tirzepatide]-en-dt-us-MMA" — look them up in
+  BingAds.ad_performance or BingAds.campaigns by campaign_name (STRING)
+- Bing vs Google are SEPARATE ad systems; do NOT try to find Bing campaign names in Google tables
+- WeightAgent.visits.campaign_id is STRING containing raw numeric IDs (UTM param), NOT names
+
 DATASET WeightAgent ─────────────────────────────────────────────────────────────
 
-TABLE weightagent.WeightAgent.visits  (~105k rows)
-  Session-level landing page visits. One row per visit.
-  id (STRING, primary key → joins to conversions.visit_id),
+TABLE weightagent.WeightAgent.visits  (~105k rows, session-level)
+  id (STRING, PK → conversions.visit_id),
   platform_id (STRING: 'bing' | 'google' | 'organic'),
   entered_at_date (DATE), entered_at (INT64 unix ms),
-  campaign_id (STRING), adgroup_id (STRING), creative (STRING, ad id),
+  campaign_id (STRING, raw numeric UTM campaign ID — NOT a campaign name),
+  adgroup_id (STRING, raw numeric UTM ad group ID),
+  creative (STRING, ad id), msclkid (STRING, Bing click id), gclid (STRING, Google click id),
   device (STRING: c=desktop, m=mobile, t=tablet),
   match_type (STRING: e=exact, p=phrase, b=broad), network (STRING),
   dti (STRING, landing page variant: r4, j4, c9, i2, t3, u8, c6, a5, q7, q8 …),
-  landing_page (STRING, full URL with UTM params),
-  user_country (STRING), loc_physical_ms (STRING)
+  landing_page (STRING, full URL), user_country (STRING)
 
-TABLE weightagent.WeightAgent.conversions  (~15k rows)
-  Funnel conversion events. One row per funnel event.
+TABLE weightagent.WeightAgent.conversions  (~15k rows, funnel events)
   id (STRING), visit_id (STRING → joins to visits.id),
-  conversion_at (INT64, Unix ms — NOT a TIMESTAMP; use TIMESTAMP_MILLIS() to convert),
-  value (STRING → use SAFE_CAST(value AS FLOAT64) for math; represents revenue USD),
+  conversion_at (INT64, Unix ms — use TIMESTAMP_MILLIS() to convert),
+  value (STRING → SAFE_CAST(value AS FLOAT64) for math; USD revenue),
   affiliate_value (STRING), projected_value (STRING),
   funnel_step (STRING: 'other' | 'step_1' | 'step_2' | 'step_3'),
   funnel_step_description (STRING: 'Quiz Start' | 'Lead' | NULL),
@@ -107,11 +114,10 @@ TABLE weightagent.WeightAgent.conversions  (~15k rows)
   is_partner (BOOL), is_first (BOOL)
 
 FUNNEL STEP MEANING:
-  Quiz Start = funnel_step = 'other' AND funnel_step_description = 'Quiz Start'
-  Lead       = funnel_step = 'other' AND funnel_step_description = 'Lead'
-  step_1, step_2, step_3 = progression toward goal (step_3 = deepest goal)
+  Quiz Start = funnel_step='other' AND funnel_step_description='Quiz Start'
+  Goal event = funnel_step='step_3'
 
-JOINS visits + conversions:
+VISITS + CONVERSIONS JOIN EXAMPLE:
   SELECT v.dti, v.device,
     COUNT(DISTINCT v.id) AS visits,
     COUNT(DISTINCT CASE WHEN c.funnel_step='other' AND c.funnel_step_description='Quiz Start' THEN c.id END) AS quiz_starts,
@@ -124,14 +130,14 @@ JOINS visits + conversions:
 
 DATASET BingAds ─────────────────────────────────────────────────────────────────
 
-TABLE weightagent.BingAds.ad_performance  (daily, by ad group)
+TABLE weightagent.BingAds.ad_performance  (daily stats by ad group)
   data_date (DATE), account_id, account_name,
   campaign_id (STRING), campaign_name (STRING), campaign_type (STRING),
   ad_group_id (STRING), ad_group_name (STRING), ad_id (STRING), ad_name (STRING),
-  device_type (STRING), final_url (STRING), final_mobile_url (STRING),
+  device_type (STRING), final_url (STRING),
   impressions (INT64), clicks (INT64), spend (FLOAT64 USD), conversions (FLOAT64)
 
-TABLE weightagent.BingAds.keywords  (keyword entities, not daily stats)
+TABLE weightagent.BingAds.keywords  (keyword entities — no daily stats here)
   account_id, keyword_id, ad_group_id (STRING), campaign_id (STRING),
   keyword_text (STRING), match_type (STRING: MatchType.EXACT | MatchType.PHRASE | MatchType.BROAD),
   cpc_bid (FLOAT64), status (STRING: KeywordStatus.ACTIVE | KeywordStatus.PAUSED)
@@ -143,30 +149,51 @@ TABLE weightagent.BingAds.campaigns
 TABLE weightagent.BingAds.ad_groups
   ad_group_id (STRING), campaign_id (STRING), ad_group_name (STRING), status (STRING)
 
-BING KEYWORD+SPEND PATTERN (note: stats are at ad-group level, keyword is many-per-group):
+BING CAMPAIGN ANALYSIS EXAMPLE — look up by campaign_name (STRING):
   SELECT bp.campaign_name, bp.ad_group_name,
     SUM(bp.clicks) AS clicks, SUM(bp.spend) AS spend, SUM(bp.conversions) AS convs
   FROM weightagent.BingAds.ad_performance bp
   WHERE bp.data_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+    AND bp.campaign_name = 'Search-generics-[tirzepatide]-en-dt-us-MMA'
   GROUP BY 1, 2 ORDER BY spend DESC LIMIT 20
+
+BING KEYWORDS IN A CAMPAIGN:
+  SELECT k.keyword_text, k.match_type, k.cpc_bid, k.status
+  FROM weightagent.BingAds.keywords k
+  WHERE k.campaign_id = (
+    SELECT campaign_id FROM weightagent.BingAds.campaigns
+    WHERE campaign_name = 'Search-generics-[tirzepatide]-en-dt-us-MMA' LIMIT 1
+  ) AND k.status = 'KeywordStatus.ACTIVE'
+  LIMIT 50
 
 DATASET GoogleAds ───────────────────────────────────────────────────────────────
 
+IMPORTANT: All GoogleAds id columns are INTEGER, not STRING.
+To filter by Google campaign name, join ads_Campaign_4808949235 first.
+
+TABLE weightagent.GoogleAds.ads_Campaign_4808949235  (campaign entities)
+  campaign_id (INTEGER, PK), customer_id (INTEGER),
+  campaign_name (STRING), campaign_status (STRING),
+  campaign_bidding_strategy_type (STRING),
+  campaign_start_date (DATE), campaign_end_date (DATE),
+  _DATA_DATE (DATE), _LATEST_DATE (DATE)
+
 TABLE weightagent.GoogleAds.ads_KeywordStats_4808949235  (daily keyword stats)
   segments_date (DATE), _DATA_DATE (DATE), _LATEST_DATE (DATE),
-  ad_group_criterion_criterion_id (STRING), ad_group_id (STRING), campaign_id (STRING),
+  ad_group_criterion_criterion_id (INTEGER), ad_group_id (INTEGER), campaign_id (INTEGER),
   segments_device (STRING: DESKTOP | MOBILE | TABLET),
-  metrics_clicks (INT64), metrics_impressions (INT64),
-  metrics_cost_micros (INT64, ÷1e6 = USD), metrics_conversions (FLOAT64),
-  metrics_conversions_value (FLOAT64), metrics_average_cpc (INT64, micros)
+  metrics_clicks (INTEGER), metrics_impressions (INTEGER),
+  metrics_cost_micros (INTEGER, ÷1e6 = USD), metrics_conversions (FLOAT64),
+  metrics_conversions_value (FLOAT64)
 
-TABLE weightagent.GoogleAds.ads_Keyword_4808949235  (keyword entities with text)
-  ad_group_criterion_criterion_id (STRING), ad_group_id (STRING), campaign_id (STRING),
+TABLE weightagent.GoogleAds.ads_Keyword_4808949235  (keyword entities)
+  ad_group_criterion_criterion_id (INTEGER), ad_group_id (INTEGER), campaign_id (INTEGER),
   ad_group_criterion_keyword_text (STRING),
   ad_group_criterion_keyword_match_type (STRING: EXACT | PHRASE | BROAD),
-  ad_group_criterion_quality_info_quality_score (INT64), ad_group_criterion_status (STRING)
+  ad_group_criterion_quality_info_quality_score (INTEGER),
+  ad_group_criterion_status (STRING)
 
-GOOGLE KEYWORD+SPEND PATTERN:
+GOOGLE KEYWORD+SPEND EXAMPLE (no campaign filter):
   SELECT k.ad_group_criterion_keyword_text, SUM(ks.metrics_clicks) AS clicks,
     SUM(ks.metrics_cost_micros)/1e6 AS spend_usd, SUM(ks.metrics_conversions) AS convs
   FROM weightagent.GoogleAds.ads_KeywordStats_4808949235 ks
@@ -176,29 +203,57 @@ GOOGLE KEYWORD+SPEND PATTERN:
   WHERE ks.segments_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
   GROUP BY 1 ORDER BY spend_usd DESC LIMIT 20
 
-NOTE: Do NOT use _DATA_DATE = _LATEST_DATE on KeywordStats/SearchQueryStats — stats tables have
-      segments_date < _LATEST_DATE by design. Just filter by segments_date for time ranges.
+GOOGLE KEYWORD+SPEND FILTERED BY CAMPAIGN NAME:
+  SELECT k.ad_group_criterion_keyword_text, SUM(ks.metrics_clicks) AS clicks,
+    SUM(ks.metrics_cost_micros)/1e6 AS spend_usd, SUM(ks.metrics_conversions) AS convs
+  FROM weightagent.GoogleAds.ads_KeywordStats_4808949235 ks
+  JOIN weightagent.GoogleAds.ads_Keyword_4808949235 k
+    ON ks.ad_group_criterion_criterion_id = k.ad_group_criterion_criterion_id
+    AND ks.ad_group_id = k.ad_group_id
+  JOIN weightagent.GoogleAds.ads_Campaign_4808949235 c
+    ON ks.campaign_id = c.campaign_id AND c._DATA_DATE = c._LATEST_DATE
+  WHERE ks.segments_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+    AND c.campaign_name = 'Brands-US-en-Desktop'
+  GROUP BY 1 ORDER BY spend_usd DESC LIMIT 20
+
+NOTE: For KeywordStats/SearchQueryStats do NOT filter _DATA_DATE = _LATEST_DATE —
+      segments_date is always < _LATEST_DATE by design. Just filter by segments_date.
 
 TABLE weightagent.GoogleAds.ads_SearchQueryStats_4808949235  (actual search terms)
   segments_date (DATE), _DATA_DATE (DATE), _LATEST_DATE (DATE),
   search_term_view_search_term (STRING), segments_search_term_match_type (STRING),
-  ad_group_id (STRING), campaign_id (STRING),
-  metrics_clicks (INT64), metrics_impressions (INT64),
-  metrics_cost_micros (INT64, ÷1e6 = USD), metrics_conversions (FLOAT64), metrics_ctr (FLOAT64)
+  ad_group_id (INTEGER), campaign_id (INTEGER),
+  metrics_clicks (INTEGER), metrics_impressions (INTEGER),
+  metrics_cost_micros (INTEGER, ÷1e6 = USD), metrics_conversions (FLOAT64), metrics_ctr (FLOAT64)
 
 TABLE weightagent.GoogleAds.ads_Ad_4808949235  (RSA ad entities)
-  _DATA_DATE (DATE), _LATEST_DATE (DATE),
-  campaign_id (STRING), campaign_name (STRING), ad_group_id (STRING), ad_group_name (STRING),
-  id AS ad_id (STRING), ad_type (STRING), status (STRING), ad_strength (STRING),
-  headlines (ARRAY<STRING>), descriptions (ARRAY<STRING>)
+  NOTE: Actual column names use the long Google Ads prefix — use these exact names:
+  ad_group_ad_ad_id (INTEGER), ad_group_id (INTEGER), campaign_id (INTEGER),
+  ad_group_ad_status (STRING: ENABLED | PAUSED | REMOVED),
+  ad_group_ad_ad_strength (STRING: EXCELLENT | GOOD | AVERAGE | POOR),
+  ad_group_ad_ad_type (STRING: RESPONSIVE_SEARCH_AD | EXPANDED_TEXT_AD),
+  ad_group_ad_ad_responsive_search_ad_headlines (STRING, serialised array of headline objects),
+  ad_group_ad_ad_responsive_search_ad_descriptions (STRING, serialised array of description objects),
+  ad_group_ad_ad_responsive_search_ad_path1 (STRING),
+  ad_group_ad_ad_responsive_search_ad_path2 (STRING),
+  _DATA_DATE (DATE), _LATEST_DATE (DATE)
 
-Rules:
+RSA AD QUERY EXAMPLE (use _DATA_DATE = _LATEST_DATE here — it IS an entity table):
+  SELECT ad_group_id, campaign_id,
+    ad_group_ad_ad_strength,
+    ad_group_ad_ad_responsive_search_ad_headlines,
+    ad_group_ad_ad_responsive_search_ad_descriptions
+  FROM weightagent.GoogleAds.ads_Ad_4808949235
+  WHERE _DATA_DATE = _LATEST_DATE
+    AND ad_group_ad_status = 'ENABLED'
+  LIMIT 20
+
+General rules:
 - ALWAYS use full table paths: weightagent.DatasetName.table_name
-- conversion_at in WeightAgent.conversions is INT64 unix ms — use TIMESTAMP_MILLIS(conversion_at) to convert
-- value/affiliate_value/projected_value in conversions are STRING — always SAFE_CAST(value AS FLOAT64)
-- For KeywordStats/SearchQueryStats: filter by segments_date for date ranges (do NOT use _DATA_DATE = _LATEST_DATE)
+- conversion_at is INT64 unix ms — use TIMESTAMP_MILLIS(conversion_at) to convert
+- value/affiliate_value/projected_value in conversions are STRING — SAFE_CAST(value AS FLOAT64)
 - LIMIT 50 on all queries; no INSERT/UPDATE/DELETE/MERGE
-- cost_micros ÷ 1e6 = USD; metrics_average_cpc is also in micros
+- cost_micros ÷ 1e6 = USD
 """
 
 
@@ -461,7 +516,7 @@ def _get_lucky_candidates() -> list[dict]:
             SELECT brand_display_name,
               COUNT(CASE WHEN funnel_step='other' AND funnel_step_description='Quiz Start' THEN 1 END) AS quiz_starts,
               COUNT(CASE WHEN funnel_step='step_3' THEN 1 END) AS goal_events,
-              SUM(value) AS revenue
+              SUM(SAFE_CAST(value AS FLOAT64)) AS revenue
             FROM weightagent.WeightAgent.conversions
             WHERE brand_display_name IS NOT NULL
             GROUP BY 1 HAVING COUNT(*) > 5 ORDER BY revenue DESC LIMIT 8
@@ -620,8 +675,11 @@ def query_postgres(sql: str, purpose: str) -> str:
 def query_bigquery(sql: str, purpose: str) -> str:
     """Run a SELECT query against BigQuery — the primary analytics database.
     Datasets: weightagent.WeightAgent (visits, conversions), weightagent.BingAds (ad_performance, keywords, campaigns),
-    weightagent.GoogleAds (ads_KeywordStats_4808949235, ads_Keyword_4808949235, ads_SearchQueryStats_4808949235, ads_Ad_4808949235).
-    Always use full table paths. Filter _DATA_DATE = _LATEST_DATE on GoogleAds tables.
+    weightagent.GoogleAds (ads_Campaign_4808949235, ads_KeywordStats_4808949235, ads_Keyword_4808949235,
+    ads_SearchQueryStats_4808949235, ads_Ad_4808949235).
+    Always use full table paths. GoogleAds id fields (campaign_id, ad_group_id) are INTEGER — never compare
+    to string campaign names; join ads_Campaign_4808949235 to filter by name.
+    Bing campaigns are looked up by campaign_name (STRING) in BingAds tables.
     sql: valid BigQuery SQL with full table paths.
     purpose: one sentence describing what you want to learn."""
     return "executed"
