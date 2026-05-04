@@ -51,85 +51,149 @@ DOMAIN_CONTEXT = """You are a senior performance marketing researcher for top5we
 a comparison site for GLP-1 / weight loss medication programs.
 
 BUSINESS: Traffic comes from Bing Ads + Google Ads. The funnel is:
-  Keyword → Ad copy → Landing page (dti variant) → Partner comparison table → Partner brand page → Purchase
+  Keyword → Ad copy → Landing page (dti variant) → Partner comparison table → Partner brand page → Goal event
 
-PARTNERS (affiliates): Medvi (largest), Ro, SkinnyRX, Sprout, Eden, Hers, Remedy
+PARTNERS (brand_display_name in data): Medvi (largest), Ro, SkinnyRX, Sprout, Eden, Hers, Remedy
 TOP KEYWORDS: tirzepatide, semaglutide for weight loss, zepbound, wegovy, compounded tirzepatide, GLP-1 pills
-KEY METRICS: Quiz Start (top-of-funnel), Purchase (goal), CVR = Purchases/Quiz Starts,
-             EPV = revenue/visits, EPC = revenue/clicks, LPCTR = landing page click-through rate
+KEY METRICS:
+  Quiz Start = funnel_step='other' AND funnel_step_description='Quiz Start' (top-of-funnel)
+  Goal event = funnel_step='step_3' (bottom-of-funnel, closest to purchase)
+  CVR = goal_events / quiz_starts
+  EPV = revenue / visits,  EPC = revenue / clicks,  LPCTR = landing page click-through rate
 
 IMPORTANT PRINCIPLES:
 - EPC alone is misleading — always consider EPV, click share, volume, and table position together
 - RSA ads are already testing systems — prefer soft optimization (replace weak lines, keep strong ones)
 - Never copy competitors blindly — describe what was observed and what it may suggest
 - Distinguish: evidence | hypothesis | recommendation | open_question
+- ALL analytics data is in BigQuery. The PostgreSQL database holds only app config — do NOT query it for marketing analytics.
 """
 
+# PostgreSQL holds app config only — no marketing analytics data there.
 PG_SCHEMA = """
-── PostgreSQL: public.conversions ──────────────────────────────────────────────
-Funnel events table. One row per funnel event across the user journey.
-
-Columns:
-  id, value (revenue USD), conversion_at (TIMESTAMPTZ), platform_id (bing/google/organic),
-  network (o=bing_search, g=google, s=syndication), device (c=desktop, m=mobile, t=tablet),
-  match_type (e=exact, p=phrase, b=broad), funnel_step (Quiz Start | Quiz Complete | Add to Cart | Lead | Purchase),
-  affiliate (Medvi | Ro | SkinnyRX | Sprout | Eden | Hers | Remedy),
-  campaign_id, adgroup_id, keyword, utm_campaign, dti (landing page variant e.g. r4/j4/i2),
-  landing_page_path, user_country, loc_physical_ms
-
-Useful aggregation pattern:
-  COUNT(*) FILTER (WHERE funnel_step='Quiz Start') AS starts,
-  COUNT(*) FILTER (WHERE funnel_step='Purchase') AS purchases,
-  ROUND(purchases::numeric / NULLIF(starts,0) * 100, 2) AS cvr,
-  SUM(value) AS revenue
-
-Rules: SELECT only, use NULLIF for division, LIMIT 50, no INSERT/UPDATE/DELETE
+── PostgreSQL ────────────────────────────────────────────────────────────────────
+NOTE: The PostgreSQL database contains only application configuration (prompts, settings).
+      It has NO marketing analytics data. Do NOT use query_postgres for any analytics.
+      Use query_bigquery for all funnel, keyword, spend, and conversion analysis.
 """
 
 BQ_SCHEMA = """
-── BigQuery ─────────────────────────────────────────────────────────────────────
-Project: weightagent   Main dataset: WeightAgent   Ads dataset: GoogleAds
+── BigQuery (ALL marketing analytics data lives here) ────────────────────────────
+Project: weightagent
 
-TABLE weightagent.WeightAgent.visits
+DATASET WeightAgent ─────────────────────────────────────────────────────────────
+
+TABLE weightagent.WeightAgent.visits  (~105k rows)
   Session-level landing page visits. One row per visit.
-  id, platform_id, entered_at_date (DATE), campaign_id, adgroup_id, creative (ad_id),
-  device (c/m/t), landing_page (full URL with UTM params)
+  id (STRING, primary key → joins to conversions.visit_id),
+  platform_id (STRING: 'bing' | 'google' | 'organic'),
+  entered_at_date (DATE), entered_at (INT64 unix ms),
+  campaign_id (STRING), adgroup_id (STRING), creative (STRING, ad id),
+  device (STRING: c=desktop, m=mobile, t=tablet),
+  match_type (STRING: e=exact, p=phrase, b=broad), network (STRING),
+  dti (STRING, landing page variant: r4, j4, c9, i2, t3, u8, c6, a5, q7, q8 …),
+  landing_page (STRING, full URL with UTM params),
+  user_country (STRING), loc_physical_ms (STRING)
 
-TABLE weightagent.WeightAgent.google_ad_data
-  Google Ads daily performance by date + campaign + keyword + device.
-  date, campaign_name, adgroup_name, keyword_text, device,
-  impressions, clicks, cost_micros (÷1e6 = USD), conversions, conversion_value, average_cpc
+TABLE weightagent.WeightAgent.conversions  (~15k rows)
+  Funnel conversion events. One row per funnel event.
+  id (STRING), visit_id (STRING → joins to visits.id),
+  conversion_at (INT64, Unix ms — NOT a TIMESTAMP; use TIMESTAMP_MILLIS() to convert),
+  value (FLOAT64, revenue USD), affiliate_value (FLOAT64), projected_value (FLOAT64),
+  funnel_step (STRING: 'other' | 'step_1' | 'step_2' | 'step_3'),
+  funnel_step_description (STRING: 'Quiz Start' | 'Lead' | NULL),
+  brand_display_name (STRING: 'Medvi' | 'Ro' | 'SkinnyRX' | 'Sprout' | 'Eden' | 'Hers' | 'Remedy'),
+  is_partner (BOOL), is_first (BOOL)
 
-TABLE weightagent.WeightAgent.bing_ad_data
-  Bing Ads daily performance.
-  data_date, campaign_name, ad_group_name, keyword, device_type,
-  impressions, clicks, spend (USD), conversions, revenue
+FUNNEL STEP MEANING:
+  Quiz Start = funnel_step = 'other' AND funnel_step_description = 'Quiz Start'
+  Lead       = funnel_step = 'other' AND funnel_step_description = 'Lead'
+  step_1, step_2, step_3 = progression toward goal (step_3 = deepest goal)
 
-TABLE weightagent.GoogleAds.ads_Ad_4808949235
-  RSA ad entities — headlines and descriptions.
-  _DATA_DATE, campaign_id, campaign_name, ad_group_id, ad_group_name, id AS ad_id,
-  ad_type, status, ad_strength, headlines (ARRAY<STRING>), descriptions (ARRAY<STRING>)
+JOINS visits + conversions:
+  SELECT v.dti, v.device,
+    COUNT(DISTINCT v.id) AS visits,
+    COUNT(DISTINCT CASE WHEN c.funnel_step='other' AND c.funnel_step_description='Quiz Start' THEN c.id END) AS quiz_starts,
+    COUNT(DISTINCT CASE WHEN c.funnel_step='step_3' THEN c.id END) AS goal_events,
+    SUM(c.value) AS revenue
+  FROM weightagent.WeightAgent.visits v
+  LEFT JOIN weightagent.WeightAgent.conversions c ON v.id = c.visit_id
+  WHERE v.entered_at_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+  GROUP BY 1, 2 ORDER BY visits DESC LIMIT 20
 
-TABLE weightagent.GoogleAds.ads_KeywordStats_4808949235
-  Google Ads keyword daily performance.
-  segments_date, campaign_name, ad_group_name, ad_group_criterion_keyword_text,
-  ad_group_criterion_keyword_match_type,
-  metrics_impressions, metrics_clicks, metrics_cost_micros, metrics_conversions,
-  metrics_conversions_value, metrics_average_cpc
+DATASET BingAds ─────────────────────────────────────────────────────────────────
 
-TABLE weightagent.GoogleAds.ads_SearchQueryStats_4808949235
-  Actual search terms triggering ads.
-  segments_date, campaign_name, search_term_view_search_term,
-  segments_search_term_match_type,
-  metrics_impressions, metrics_clicks, metrics_cost_micros, metrics_conversions
+TABLE weightagent.BingAds.ad_performance  (daily, by ad group)
+  data_date (DATE), account_id, account_name,
+  campaign_id (STRING), campaign_name (STRING), campaign_type (STRING),
+  ad_group_id (STRING), ad_group_name (STRING), ad_id (STRING), ad_name (STRING),
+  device_type (STRING), final_url (STRING), final_mobile_url (STRING),
+  impressions (INT64), clicks (INT64), spend (FLOAT64 USD), conversions (FLOAT64)
 
-TABLE weightagent.GoogleAds.ads_ClickStats_4808949235
-  Click-level data.
-  segments_date, campaign_name, ad_group_name,
-  metrics_clicks, metrics_impressions, metrics_cost_micros
+TABLE weightagent.BingAds.keywords  (keyword entities, not daily stats)
+  account_id, keyword_id, ad_group_id (STRING), campaign_id (STRING),
+  keyword_text (STRING), match_type (STRING), cpc_bid (FLOAT64), status (STRING)
 
-Rules: Use full table path e.g. `weightagent.WeightAgent.visits`, LIMIT 50,
-       cost_micros / 1e6 = USD, no INSERT/UPDATE/DELETE/MERGE
+TABLE weightagent.BingAds.campaigns
+  account_id, campaign_id (STRING), campaign_name (STRING), status (STRING),
+  budget_amount (FLOAT64), bid_strategy_type (STRING)
+
+TABLE weightagent.BingAds.ad_groups
+  ad_group_id (STRING), campaign_id (STRING), ad_group_name (STRING), status (STRING)
+
+BING KEYWORD+SPEND PATTERN (note: stats are at ad-group level, keyword is many-per-group):
+  SELECT bp.campaign_name, bp.ad_group_name,
+    SUM(bp.clicks) AS clicks, SUM(bp.spend) AS spend, SUM(bp.conversions) AS convs
+  FROM weightagent.BingAds.ad_performance bp
+  WHERE bp.data_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+  GROUP BY 1, 2 ORDER BY spend DESC LIMIT 20
+
+DATASET GoogleAds ───────────────────────────────────────────────────────────────
+
+TABLE weightagent.GoogleAds.ads_KeywordStats_4808949235  (daily keyword stats)
+  segments_date (DATE), _DATA_DATE (DATE), _LATEST_DATE (DATE),
+  ad_group_criterion_criterion_id (STRING), ad_group_id (STRING), campaign_id (STRING),
+  segments_device (STRING: DESKTOP | MOBILE | TABLET),
+  metrics_clicks (INT64), metrics_impressions (INT64),
+  metrics_cost_micros (INT64, ÷1e6 = USD), metrics_conversions (FLOAT64),
+  metrics_conversions_value (FLOAT64), metrics_average_cpc (INT64, micros)
+
+TABLE weightagent.GoogleAds.ads_Keyword_4808949235  (keyword entities with text)
+  ad_group_criterion_criterion_id (STRING), ad_group_id (STRING), campaign_id (STRING),
+  ad_group_criterion_keyword_text (STRING),
+  ad_group_criterion_keyword_match_type (STRING: EXACT | PHRASE | BROAD),
+  ad_group_criterion_quality_info_quality_score (INT64), ad_group_criterion_status (STRING)
+
+GOOGLE KEYWORD+SPEND PATTERN:
+  SELECT k.ad_group_criterion_keyword_text, SUM(ks.metrics_clicks) AS clicks,
+    SUM(ks.metrics_cost_micros)/1e6 AS spend_usd, SUM(ks.metrics_conversions) AS convs
+  FROM weightagent.GoogleAds.ads_KeywordStats_4808949235 ks
+  JOIN weightagent.GoogleAds.ads_Keyword_4808949235 k
+    ON ks.ad_group_criterion_criterion_id = k.ad_group_criterion_criterion_id
+    AND ks.ad_group_id = k.ad_group_id
+  WHERE ks.segments_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+    AND ks._DATA_DATE = ks._LATEST_DATE
+  GROUP BY 1 ORDER BY spend_usd DESC LIMIT 20
+
+TABLE weightagent.GoogleAds.ads_SearchQueryStats_4808949235  (actual search terms)
+  segments_date (DATE), _DATA_DATE (DATE), _LATEST_DATE (DATE),
+  search_term_view_search_term (STRING), segments_search_term_match_type (STRING),
+  ad_group_id (STRING), campaign_id (STRING),
+  metrics_clicks (INT64), metrics_impressions (INT64),
+  metrics_cost_micros (INT64, ÷1e6 = USD), metrics_conversions (FLOAT64), metrics_ctr (FLOAT64)
+
+TABLE weightagent.GoogleAds.ads_Ad_4808949235  (RSA ad entities)
+  _DATA_DATE (DATE), _LATEST_DATE (DATE),
+  campaign_id (STRING), campaign_name (STRING), ad_group_id (STRING), ad_group_name (STRING),
+  id AS ad_id (STRING), ad_type (STRING), status (STRING), ad_strength (STRING),
+  headlines (ARRAY<STRING>), descriptions (ARRAY<STRING>)
+
+Rules:
+- ALWAYS use full table paths: weightagent.DatasetName.table_name
+- Filter _DATA_DATE = _LATEST_DATE on KeywordStats/SearchQueryStats/ads tables to deduplicate
+- conversion_at in WeightAgent.conversions is INT64 unix ms — use TIMESTAMP_MILLIS(conversion_at)
+- LIMIT 50 on all queries; no INSERT/UPDATE/DELETE/MERGE
+- cost_micros ÷ 1e6 = USD; metrics_average_cpc is also in micros
 """
 
 
@@ -307,85 +371,104 @@ JSON array: [{{"finding_type":"evidence|hypothesis|recommendation|open_question"
 # ─── I Feel Lucky ─────────────────────────────────────────────────────────────
 
 def _get_lucky_candidates() -> list[dict]:
+    """Build a pool of interesting marketing assets from BigQuery."""
+    if not _BQ_AVAILABLE:
+        return []
     candidates = []
-    strategy = random.choice(["volume", "cvr", "revenue", "surprising"])
 
+    # ── Top Bing ad groups by spend (last 30 days) ─────────────────────────────
     try:
-        all_kw = pg_query("""
-            SELECT keyword,
-              COUNT(*) FILTER (WHERE funnel_step='Quiz Start') AS starts,
-              COUNT(*) FILTER (WHERE funnel_step='Purchase') AS purchases,
-              ROUND(COUNT(*) FILTER (WHERE funnel_step='Purchase')::numeric /
-                NULLIF(COUNT(*) FILTER (WHERE funnel_step='Quiz Start'),0)*100,1) AS cvr,
-              SUM(value) AS revenue
-            FROM conversions
-            WHERE keyword IS NOT NULL AND keyword != ''
-            GROUP BY keyword
-            HAVING COUNT(*) FILTER (WHERE funnel_step='Quiz Start') > 10
-            ORDER BY starts DESC LIMIT 40
-        """, max_rows=40)
-        pool = (all_kw[10:30] if strategy == "surprising" and len(all_kw) > 10
-                else sorted(all_kw, key=lambda r: float(r.get("cvr") or 0), reverse=True)[:20]
-                if strategy == "cvr" else all_kw[:20])
-        for r in random.sample(pool, min(8, len(pool))):
-            candidates.append({"type": "keyword", "value": r["keyword"],
-                                "starts": r["starts"], "purchases": r["purchases"],
-                                "cvr": float(r["cvr"] or 0), "revenue": float(r["revenue"] or 0)})
+        rows = bq.run_query("""
+            SELECT campaign_name, ad_group_name,
+              SUM(clicks) AS clicks, SUM(spend) AS spend, SUM(conversions) AS convs
+            FROM weightagent.BingAds.ad_performance
+            WHERE data_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+            GROUP BY 1, 2 ORDER BY spend DESC LIMIT 20
+        """, max_rows=20)
+        pool = rows[3:] if len(rows) > 3 else rows  # skip top 3 to avoid always biggest
+        for r in random.sample(pool, min(5, len(pool))):
+            candidates.append({
+                "type": "keyword",
+                "value": r["ad_group_name"],
+                "campaign": r["campaign_name"],
+                "clicks": r["clicks"], "spend": float(r["spend"] or 0),
+                "convs": float(r["convs"] or 0),
+                "note": "Bing ad group",
+            })
     except Exception:
         pass
 
+    # ── Top Bing campaigns ────────────────────────────────────────────────────
     try:
-        rows = pg_query("""
-            SELECT dti,
-              COUNT(*) FILTER (WHERE funnel_step='Quiz Start') AS starts,
-              COUNT(*) FILTER (WHERE funnel_step='Purchase') AS purchases,
-              ROUND(COUNT(*) FILTER (WHERE funnel_step='Purchase')::numeric /
-                NULLIF(COUNT(*) FILTER (WHERE funnel_step='Quiz Start'),0)*100,1) AS cvr
-            FROM conversions
-            WHERE dti IS NOT NULL AND dti != ''
-            GROUP BY dti HAVING COUNT(*) FILTER (WHERE funnel_step='Quiz Start') > 20
-            ORDER BY starts DESC LIMIT 10
-        """, max_rows=10)
+        rows = bq.run_query("""
+            SELECT campaign_name, SUM(clicks) AS clicks, SUM(spend) AS spend, SUM(conversions) AS convs
+            FROM weightagent.BingAds.ad_performance
+            WHERE data_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+            GROUP BY 1 ORDER BY spend DESC LIMIT 12
+        """, max_rows=12)
         for r in random.sample(rows, min(3, len(rows))):
-            candidates.append({"type": "landing_page", "value": r["dti"],
-                                "starts": r["starts"], "purchases": r["purchases"],
-                                "cvr": float(r["cvr"] or 0)})
+            candidates.append({
+                "type": "campaign",
+                "value": r["campaign_name"],
+                "clicks": r["clicks"], "spend": float(r["spend"] or 0), "convs": float(r["convs"] or 0),
+                "note": "Bing campaign",
+            })
     except Exception:
         pass
 
+    # ── Keyword texts from Bing keywords table ────────────────────────────────
     try:
-        rows = pg_query("""
-            SELECT affiliate,
-              COUNT(*) FILTER (WHERE funnel_step='Quiz Start') AS starts,
-              COUNT(*) FILTER (WHERE funnel_step='Purchase') AS purchases,
-              SUM(value) AS revenue,
-              ROUND(SUM(value)/NULLIF(COUNT(*) FILTER (WHERE funnel_step='Quiz Start'),0),2) AS epv
-            FROM conversions WHERE affiliate IS NOT NULL AND affiliate != ''
-            GROUP BY affiliate ORDER BY purchases DESC LIMIT 8
+        rows = bq.run_query("""
+            SELECT DISTINCT keyword_text FROM weightagent.BingAds.keywords
+            WHERE status = 'Active' LIMIT 60
+        """, max_rows=60)
+        for r in random.sample(rows, min(6, len(rows))):
+            candidates.append({
+                "type": "keyword",
+                "value": r["keyword_text"],
+                "note": "Bing keyword entity",
+            })
+    except Exception:
+        pass
+
+    # ── Top landing page variants (DTI) from visits ───────────────────────────
+    try:
+        rows = bq.run_query("""
+            SELECT dti, COUNT(*) AS visits, COUNT(DISTINCT campaign_id) AS campaigns
+            FROM weightagent.WeightAgent.visits
+            WHERE entered_at_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+              AND dti IS NOT NULL AND dti != ''
+            GROUP BY dti ORDER BY visits DESC LIMIT 10
+        """, max_rows=10)
+        for r in random.sample(rows, min(4, len(rows))):
+            candidates.append({
+                "type": "landing_page",
+                "value": r["dti"],
+                "visits": r["visits"], "campaigns": r["campaigns"],
+                "note": "Landing page variant",
+            })
+    except Exception:
+        pass
+
+    # ── Partners by revenue from conversions ──────────────────────────────────
+    try:
+        rows = bq.run_query("""
+            SELECT brand_display_name,
+              COUNT(CASE WHEN funnel_step='other' AND funnel_step_description='Quiz Start' THEN 1 END) AS quiz_starts,
+              COUNT(CASE WHEN funnel_step='step_3' THEN 1 END) AS goal_events,
+              SUM(value) AS revenue
+            FROM weightagent.WeightAgent.conversions
+            WHERE brand_display_name IS NOT NULL
+            GROUP BY 1 HAVING COUNT(*) > 5 ORDER BY revenue DESC LIMIT 8
         """, max_rows=8)
         for r in random.sample(rows, min(3, len(rows))):
-            candidates.append({"type": "partner", "value": r["affiliate"],
-                                "starts": r["starts"], "purchases": r["purchases"],
-                                "revenue": float(r["revenue"] or 0), "epv": float(r.get("epv") or 0)})
-    except Exception:
-        pass
-
-    try:
-        rows = pg_query("""
-            SELECT utm_campaign,
-              COUNT(*) FILTER (WHERE funnel_step='Quiz Start') AS starts,
-              COUNT(*) FILTER (WHERE funnel_step='Purchase') AS purchases,
-              SUM(value) AS revenue
-            FROM conversions WHERE utm_campaign IS NOT NULL AND utm_campaign != ''
-            GROUP BY utm_campaign
-            HAVING COUNT(*) FILTER (WHERE funnel_step='Quiz Start') > 30
-            ORDER BY revenue DESC LIMIT 15
-        """, max_rows=15)
-        if rows:
-            r = random.choice(rows)
-            candidates.append({"type": "campaign", "value": r["utm_campaign"],
-                                "starts": r["starts"], "purchases": r["purchases"],
-                                "revenue": float(r["revenue"] or 0)})
+            candidates.append({
+                "type": "partner",
+                "value": r["brand_display_name"],
+                "quiz_starts": r["quiz_starts"], "goal_events": r["goal_events"],
+                "revenue": float(r["revenue"] or 0),
+                "note": "Partner/affiliate",
+            })
     except Exception:
         pass
 
@@ -405,27 +488,39 @@ def _select_starting_point(state: dict, db_session, cb) -> dict:
 
     if sp_type == "lucky" or not sp_value:
         candidates = _get_lucky_candidates()
+        if not candidates:
+            # Hard-coded seed list when BigQuery unavailable
+            candidates = [
+                {"type": "keyword", "value": "compounded tirzepatide", "note": "high-volume GLP-1"},
+                {"type": "keyword", "value": "ro weight loss", "note": "brand competitor"},
+                {"type": "landing_page", "value": "r4", "note": "top traffic DTI"},
+                {"type": "partner", "value": "Medvi", "note": "largest affiliate"},
+                {"type": "campaign", "value": "Search-brands-general-en-dt-us", "note": "brand campaign"},
+            ]
         llm = create_llm(model=model, temperature=1.0)
         resp = llm.invoke([
             SystemMessage(content=DOMAIN_CONTEXT),
-            HumanMessage(content=f"""Here are marketing assets in random order. Pick ONE interesting starting point.
-Do NOT always pick the highest-volume item. Favor something surprising, ambiguous, or strategic.
+            HumanMessage(content=f"""Here are marketing assets from the live database. Pick ONE interesting starting point.
+Do NOT always pick the highest-spend or highest-volume item.
+Favor something surprising, ambiguous, strategic, or that shows an interesting pattern worth investigating.
+Consider: high spend but low conversions, unusual device mix, newer campaigns, underdog partners.
 
-Candidates:
+Candidates (randomised order):
 {json.dumps(candidates, indent=2, default=str)}
 
-Respond ONLY with JSON:
-{{"starting_point_type":"keyword|landing_page|campaign|partner","starting_point_value":"exact value","starting_point_reason":"2-3 sentences on why this is worth investigating"}}"""),
+Respond ONLY with valid JSON:
+{{"starting_point_type":"keyword|landing_page|campaign|partner","starting_point_value":"exact value from candidates","starting_point_reason":"2-3 sentences on why this specific item is worth investigating now"}}"""),
         ])
         try:
             r = _parse_json(resp.content)
             sp_type   = r.get("starting_point_type", "keyword")
-            sp_value  = r.get("starting_point_value", "tirzepatide")
+            sp_value  = r.get("starting_point_value", candidates[0]["value"])
             sp_reason = r.get("starting_point_reason", "Selected for research.")
         except Exception:
-            sp_type   = "keyword"
-            sp_value  = "tirzepatide"
-            sp_reason = "High-volume keyword with multi-affiliate funnel."
+            chosen    = random.choice(candidates)
+            sp_type   = chosen["type"]
+            sp_value  = chosen["value"]
+            sp_reason = f"Auto-selected: {chosen.get('note', 'interesting asset')}"
     else:
         llm = create_llm(model=model, temperature=0.3)
         resp = llm.invoke([
@@ -464,9 +559,9 @@ Notes from previous runs (use as context):
 {state.get('notes', 'none')[:1000]}
 
 Available data sources:
-- PostgreSQL (query_postgres): funnel events, CVR, revenue by keyword/partner/campaign/dti
-- BigQuery (query_bigquery): visits, ad spend, RSA ad copy, keyword stats, search queries
+- BigQuery (query_bigquery): visits, conversions/funnel events, Bing ad spend, Google keyword stats, RSA ad copy, search terms
 - Crawl (crawl_url): competitor pages, partner brand pages, landing pages
+- NOTE: PostgreSQL has no analytics data — only use query_bigquery for all analytics
 
 Respond with JSON:
 {{"plan_summary":"one paragraph","steps":[{{"step":1,"focus":"...","source":"query_postgres|query_bigquery|crawl_url","why":"..."}}]}}"""),
@@ -511,16 +606,20 @@ class ResearchState(TypedDict):
 
 @tool
 def query_postgres(sql: str, purpose: str) -> str:
-    """Run a SELECT query against the PostgreSQL conversions table.
+    """Run a SELECT query against the PostgreSQL app database.
+    NOTE: This database contains only app configuration — NO marketing analytics data.
+    Use query_bigquery for all funnel, keyword, spend, and conversion analysis.
     sql: valid PostgreSQL SELECT.
     purpose: one sentence describing what you want to learn."""
     return "executed"
 
 @tool
 def query_bigquery(sql: str, purpose: str) -> str:
-    """Run a SELECT query against BigQuery (ad spend, visits, RSA ads, search terms).
-    Always use full table paths: weightagent.WeightAgent.visits, etc.
-    sql: valid BigQuery SQL.
+    """Run a SELECT query against BigQuery — the primary analytics database.
+    Datasets: weightagent.WeightAgent (visits, conversions), weightagent.BingAds (ad_performance, keywords, campaigns),
+    weightagent.GoogleAds (ads_KeywordStats_4808949235, ads_Keyword_4808949235, ads_SearchQueryStats_4808949235, ads_Ad_4808949235).
+    Always use full table paths. Filter _DATA_DATE = _LATEST_DATE on GoogleAds tables.
+    sql: valid BigQuery SQL with full table paths.
     purpose: one sentence describing what you want to learn."""
     return "executed"
 
@@ -577,7 +676,6 @@ def _build_research_graph(
     system_text = (
         prompts["research_system"] + "\n\n"
         + DOMAIN_CONTEXT + "\n\n"
-        + PG_SCHEMA + "\n\n"
         + BQ_SCHEMA
     )
     system_msg = SystemMessage(content=system_text)
