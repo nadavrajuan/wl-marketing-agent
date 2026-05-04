@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 type StartingPointType =
@@ -22,10 +22,10 @@ interface LuckyCandidate {
 }
 
 const DEPTH_OPTIONS: { value: Depth; label: string; desc: string; time: string }[] = [
-  { value: "quick", label: "Quick Scan", desc: "3–4 key threads, fast POV", time: "~2 min" },
-  { value: "standard", label: "Standard", desc: "Full funnel, key findings, test ideas", time: "~5 min" },
-  { value: "deep", label: "Deep Dive", desc: "Multiple threads, competitor comparisons", time: "~10 min" },
-  { value: "extreme", label: "Extreme", desc: "Full rabbit-hole, broad market view", time: "~20 min" },
+  { value: "quick", label: "Quick Scan", desc: "Surface-level orientation, 6 steps", time: "~3 min" },
+  { value: "standard", label: "Standard", desc: "Full funnel + ad copy + landing page", time: "~8 min" },
+  { value: "deep", label: "Deep Dive", desc: "Competitor layer, multiple threads", time: "~15 min" },
+  { value: "extreme", label: "Extreme", desc: "Full rabbit-hole, exhaustive evidence", time: "~30 min" },
 ];
 
 const SP_TYPES: { value: StartingPointType; label: string; placeholder: string; luckyTypes: string[] }[] = [
@@ -153,9 +153,12 @@ export default function ResearchPage() {
         </div>
         <button
           onClick={() => router.push("/research/settings")}
-          className="shrink-0 text-xs text-gray-600 hover:text-gray-400 border border-gray-800 hover:border-gray-600 rounded-lg px-3 py-1.5 transition-all mt-1"
+          className="shrink-0 text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 rounded-lg px-3 py-1.5 transition-all mt-1 flex items-center gap-1.5"
         >
-          ⚙ Prompts
+          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 opacity-70">
+            <path fillRule="evenodd" d="M6.5 1a.5.5 0 0 1 .5.5V2h2v-.5a.5.5 0 0 1 1 0V2h1a2 2 0 0 1 2 2v1h.5a.5.5 0 0 1 0 1H14v1h.5a.5.5 0 0 1 0 1H14v1h.5a.5.5 0 0 1 0 1H14v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h1v-.5a.5.5 0 0 1 .5-.5zM4 3a1 1 0 0 0-1 1v1h10V4a1 1 0 0 0-1-1H4zm9 3H3v6a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6z"/>
+          </svg>
+          Edit Prompts
         </button>
       </div>
 

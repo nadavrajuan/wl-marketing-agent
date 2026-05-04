@@ -38,10 +38,10 @@ except Exception:
 # ─── Depth → iteration budget ─────────────────────────────────────────────────
 
 DEPTH_ITERATIONS = {
-    "quick":    4,
-    "standard": 8,
-    "deep":     14,
-    "extreme":  20,
+    "quick":    6,
+    "standard": 14,
+    "deep":     22,
+    "extreme":  35,
 }
 
 
