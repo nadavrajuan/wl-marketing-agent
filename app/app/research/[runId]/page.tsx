@@ -197,6 +197,7 @@ export default function ResearchRunPage({ params }: { params: Promise<{ runId: s
           setPolling(false);
           fetchRun();
         }
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (_) { /* ignore malformed SSE frames */ }
     };
 

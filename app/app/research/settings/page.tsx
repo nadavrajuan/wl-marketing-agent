@@ -175,7 +175,7 @@ export default function ResearchSettingsPage() {
             ))}
           </div>
           <div className="mt-4 pt-4 border-t border-gray-800 text-xs text-gray-600">
-            Use double braces to include literal braces in your prompt: <code className="text-gray-500">{{{{ literal }}</code>
+            Use double braces to include literal braces in your prompt: <code className="text-gray-500">{"{{literal}}"}</code>
           </div>
         </div>
       )}

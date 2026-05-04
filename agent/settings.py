@@ -41,6 +41,10 @@ def get_bigquery_dataset() -> str:
     return get_env("BIGQUERY_DATASET", "WeightAgent") or "WeightAgent"
 
 
+def get_google_ads_bigquery_dataset() -> str:
+    return get_env("GOOGLE_ADS_DATASET", "GoogleAds") or "GoogleAds"
+
+
 def get_bigquery_credentials() -> service_account.Credentials | None:
     raw_json = get_env("BIGQUERY_SERVICE_ACCOUNT_JSON")
     if raw_json:
