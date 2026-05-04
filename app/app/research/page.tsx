@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 type StartingPointType =
@@ -14,18 +14,6 @@ type StartingPointType =
   | "question";
 
 type Depth = "quick" | "standard" | "deep" | "extreme";
-
-interface ResearchRunSummary {
-  run_id: string;
-  status: string;
-  created_at: string;
-  starting_point_type: string;
-  starting_point_value: string;
-  depth: string;
-  iteration_count: number;
-  duration_seconds: number | null;
-  executive_summary: string;
-}
 
 interface LuckyCandidate {
   type: string;
@@ -50,20 +38,6 @@ const SP_TYPES: { value: StartingPointType; label: string; placeholder: string; 
   { value: "competitor_url", label: "Competitor URL", placeholder: "e.g. https://forbes.com/...", luckyTypes: [] },
   { value: "question", label: "Research Question", placeholder: "e.g. Why is mobile CVR lower than desktop?", luckyTypes: [] },
 ];
-
-const STATUS_COLORS: Record<string, string> = {
-  running: "text-yellow-400",
-  completed: "text-green-400",
-  failed: "text-red-400",
-  stopped: "text-gray-400",
-};
-
-const STATUS_ICONS: Record<string, string> = {
-  running: "⟳",
-  completed: "✓",
-  failed: "✕",
-  stopped: "◼",
-};
 
 function DiceIcon({ className }: { className?: string }) {
   return (
@@ -92,23 +66,11 @@ export default function ResearchPage() {
   const [spType, setSpType] = useState<StartingPointType>("keyword");
   const [spValue, setSpValue] = useState("");
   const [isStarting, setIsStarting] = useState(false);
-  const [runs, setRuns] = useState<ResearchRunSummary[]>([]);
-  const [loadingRuns, setLoadingRuns] = useState(true);
 
   // Dice state
   const [diceLoading, setDiceLoading] = useState(false);
   const [luckyCache, setLuckyCache] = useState<LuckyCandidate[]>([]);
   const [usedIndices, setUsedIndices] = useState<Set<number>>(new Set());
-
-  useEffect(() => {
-    fetch("/api/research")
-      .then((r) => r.json())
-      .then((data) => {
-        setRuns(Array.isArray(data) ? data : []);
-        setLoadingRuns(false);
-      })
-      .catch(() => setLoadingRuns(false));
-  }, []);
 
   // Reset used indices when type changes
   useEffect(() => {
@@ -298,65 +260,6 @@ export default function ResearchPage() {
         </button>
       </div>
 
-      {/* Previous runs */}
-      <div>
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
-          Previous Research Runs
-        </div>
-        {loadingRuns ? (
-          <div className="text-sm text-gray-500">Loading...</div>
-        ) : runs.length === 0 ? (
-          <div className="text-sm text-gray-600 border border-dashed border-gray-800 rounded-xl p-6 text-center">
-            No research runs yet. Start your first investigation above.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {runs.map((r) => (
-              <button
-                key={r.run_id}
-                onClick={() => router.push(`/research/${r.run_id}`)}
-                className="w-full text-left rounded-xl border border-gray-800 bg-gray-900 hover:border-gray-600 hover:bg-gray-850 transition-all p-4 group"
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className={`text-sm ${STATUS_COLORS[r.status] || "text-gray-400"}`}>
-                      {STATUS_ICONS[r.status] || "•"}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-white truncate">
-                        <span className="text-gray-500 font-normal">
-                          [{r.starting_point_type}]
-                        </span>{" "}
-                        {r.starting_point_value || "(agent chose)"}
-                      </div>
-                      {r.executive_summary && (
-                        <div className="text-xs text-gray-500 mt-0.5 truncate">
-                          {r.executive_summary}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="shrink-0 flex items-center gap-3 text-xs text-gray-600">
-                    <span className="capitalize">{r.depth}</span>
-                    {r.duration_seconds && (
-                      <span>{Math.round(r.duration_seconds)}s</span>
-                    )}
-                    <span>
-                      {new Date(r.created_at).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                    <span className="text-gray-700 group-hover:text-gray-400 transition-colors">→</span>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
