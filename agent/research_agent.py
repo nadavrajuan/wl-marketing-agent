@@ -99,7 +99,8 @@ TABLE weightagent.WeightAgent.conversions  (~15k rows)
   Funnel conversion events. One row per funnel event.
   id (STRING), visit_id (STRING → joins to visits.id),
   conversion_at (INT64, Unix ms — NOT a TIMESTAMP; use TIMESTAMP_MILLIS() to convert),
-  value (FLOAT64, revenue USD), affiliate_value (FLOAT64), projected_value (FLOAT64),
+  value (STRING → use SAFE_CAST(value AS FLOAT64) for math; represents revenue USD),
+  affiliate_value (STRING), projected_value (STRING),
   funnel_step (STRING: 'other' | 'step_1' | 'step_2' | 'step_3'),
   funnel_step_description (STRING: 'Quiz Start' | 'Lead' | NULL),
   brand_display_name (STRING: 'Medvi' | 'Ro' | 'SkinnyRX' | 'Sprout' | 'Eden' | 'Hers' | 'Remedy'),
@@ -115,7 +116,7 @@ JOINS visits + conversions:
     COUNT(DISTINCT v.id) AS visits,
     COUNT(DISTINCT CASE WHEN c.funnel_step='other' AND c.funnel_step_description='Quiz Start' THEN c.id END) AS quiz_starts,
     COUNT(DISTINCT CASE WHEN c.funnel_step='step_3' THEN c.id END) AS goal_events,
-    SUM(c.value) AS revenue
+    SUM(SAFE_CAST(c.value AS FLOAT64)) AS revenue
   FROM weightagent.WeightAgent.visits v
   LEFT JOIN weightagent.WeightAgent.conversions c ON v.id = c.visit_id
   WHERE v.entered_at_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
@@ -172,8 +173,10 @@ GOOGLE KEYWORD+SPEND PATTERN:
     ON ks.ad_group_criterion_criterion_id = k.ad_group_criterion_criterion_id
     AND ks.ad_group_id = k.ad_group_id
   WHERE ks.segments_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
-    AND ks._DATA_DATE = ks._LATEST_DATE
   GROUP BY 1 ORDER BY spend_usd DESC LIMIT 20
+
+NOTE: Do NOT use _DATA_DATE = _LATEST_DATE on KeywordStats/SearchQueryStats — stats tables have
+      segments_date < _LATEST_DATE by design. Just filter by segments_date for time ranges.
 
 TABLE weightagent.GoogleAds.ads_SearchQueryStats_4808949235  (actual search terms)
   segments_date (DATE), _DATA_DATE (DATE), _LATEST_DATE (DATE),
@@ -190,8 +193,9 @@ TABLE weightagent.GoogleAds.ads_Ad_4808949235  (RSA ad entities)
 
 Rules:
 - ALWAYS use full table paths: weightagent.DatasetName.table_name
-- Filter _DATA_DATE = _LATEST_DATE on KeywordStats/SearchQueryStats/ads tables to deduplicate
-- conversion_at in WeightAgent.conversions is INT64 unix ms — use TIMESTAMP_MILLIS(conversion_at)
+- conversion_at in WeightAgent.conversions is INT64 unix ms — use TIMESTAMP_MILLIS(conversion_at) to convert
+- value/affiliate_value/projected_value in conversions are STRING — always SAFE_CAST(value AS FLOAT64)
+- For KeywordStats/SearchQueryStats: filter by segments_date for date ranges (do NOT use _DATA_DATE = _LATEST_DATE)
 - LIMIT 50 on all queries; no INSERT/UPDATE/DELETE/MERGE
 - cost_micros ÷ 1e6 = USD; metrics_average_cpc is also in micros
 """
