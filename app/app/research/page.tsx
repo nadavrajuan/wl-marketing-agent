@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 type StartingPointType =
-  | "lucky"
   | "keyword"
   | "url"
   | "landing_page"
@@ -28,6 +27,12 @@ interface ResearchRunSummary {
   executive_summary: string;
 }
 
+interface LuckyCandidate {
+  type: string;
+  value: string;
+  [key: string]: unknown;
+}
+
 const DEPTH_OPTIONS: { value: Depth; label: string; desc: string; time: string }[] = [
   { value: "quick", label: "Quick Scan", desc: "3–4 key threads, fast POV", time: "~2 min" },
   { value: "standard", label: "Standard", desc: "Full funnel, key findings, test ideas", time: "~5 min" },
@@ -35,15 +40,15 @@ const DEPTH_OPTIONS: { value: Depth; label: string; desc: string; time: string }
   { value: "extreme", label: "Extreme", desc: "Full rabbit-hole, broad market view", time: "~20 min" },
 ];
 
-const SP_TYPES: { value: StartingPointType; label: string; placeholder: string }[] = [
-  { value: "keyword", label: "Keyword", placeholder: "e.g. tirzepatide for weight loss" },
-  { value: "url", label: "URL", placeholder: "e.g. https://top5weightchoices.com/..." },
-  { value: "landing_page", label: "Landing Page (DTI)", placeholder: "e.g. r4" },
-  { value: "campaign", label: "Campaign", placeholder: "e.g. Search-generics-[tirzepatide]-en-dt-us" },
-  { value: "partner", label: "Partner / Affiliate", placeholder: "e.g. Medvi" },
-  { value: "brand", label: "Brand", placeholder: "e.g. Ro, SkinnyRX" },
-  { value: "competitor_url", label: "Competitor URL", placeholder: "e.g. https://forbes.com/..." },
-  { value: "question", label: "Research Question", placeholder: "e.g. Why is mobile CVR lower than desktop?" },
+const SP_TYPES: { value: StartingPointType; label: string; placeholder: string; luckyTypes: string[] }[] = [
+  { value: "keyword", label: "Keyword", placeholder: "e.g. tirzepatide for weight loss", luckyTypes: ["keyword"] },
+  { value: "url", label: "URL", placeholder: "e.g. https://top5weightchoices.com/...", luckyTypes: [] },
+  { value: "landing_page", label: "Landing Page (DTI)", placeholder: "e.g. r4", luckyTypes: ["landing_page"] },
+  { value: "campaign", label: "Campaign", placeholder: "e.g. Search-generics-[tirzepatide]-en-dt-us", luckyTypes: ["campaign"] },
+  { value: "partner", label: "Partner / Affiliate", placeholder: "e.g. Medvi", luckyTypes: ["partner"] },
+  { value: "brand", label: "Brand", placeholder: "e.g. Ro, SkinnyRX", luckyTypes: ["partner"] },
+  { value: "competitor_url", label: "Competitor URL", placeholder: "e.g. https://forbes.com/...", luckyTypes: [] },
+  { value: "question", label: "Research Question", placeholder: "e.g. Why is mobile CVR lower than desktop?", luckyTypes: [] },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -60,6 +65,27 @@ const STATUS_ICONS: Record<string, string> = {
   stopped: "◼",
 };
 
+function DiceIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <rect x="2" y="2" width="20" height="20" rx="3" ry="3" />
+      <circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="8" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="16" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="16" r="1.2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export default function ResearchPage() {
   const router = useRouter();
   const [depth, setDepth] = useState<Depth>("standard");
@@ -68,6 +94,11 @@ export default function ResearchPage() {
   const [isStarting, setIsStarting] = useState(false);
   const [runs, setRuns] = useState<ResearchRunSummary[]>([]);
   const [loadingRuns, setLoadingRuns] = useState(true);
+
+  // Dice state
+  const [diceLoading, setDiceLoading] = useState(false);
+  const [luckyCache, setLuckyCache] = useState<LuckyCandidate[]>([]);
+  const [usedIndices, setUsedIndices] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     fetch("/api/research")
@@ -78,6 +109,51 @@ export default function ResearchPage() {
       })
       .catch(() => setLoadingRuns(false));
   }, []);
+
+  // Reset used indices when type changes
+  useEffect(() => {
+    setUsedIndices(new Set());
+  }, [spType]);
+
+  const currentSPMeta = SP_TYPES.find((s) => s.value === spType)!;
+  const hasDice = currentSPMeta.luckyTypes.length > 0;
+
+  const rollDice = useCallback(async () => {
+    if (diceLoading) return;
+    setDiceLoading(true);
+
+    try {
+      let candidates = luckyCache;
+
+      if (candidates.length === 0) {
+        const res = await fetch("/api/research/lucky");
+        const data = await res.json();
+        candidates = Array.isArray(data.candidates) ? data.candidates : [];
+        setLuckyCache(candidates);
+      }
+
+      const matching = candidates
+        .map((c, i) => ({ c, i }))
+        .filter(({ c }) => currentSPMeta.luckyTypes.includes(c.type));
+
+      if (matching.length === 0) {
+        setDiceLoading(false);
+        return;
+      }
+
+      // Prefer unused; reset if all used
+      const unused = matching.filter(({ i }) => !usedIndices.has(i));
+      const pool = unused.length > 0 ? unused : matching;
+
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      setUsedIndices((prev) => new Set([...prev, pick.i]));
+      setSpValue(pick.c.value);
+    } catch {
+      // silently fail
+    } finally {
+      setDiceLoading(false);
+    }
+  }, [diceLoading, luckyCache, currentSPMeta.luckyTypes, usedIndices]);
 
   async function startRun(type: StartingPointType, value: string) {
     setIsStarting(true);
@@ -100,8 +176,6 @@ export default function ResearchPage() {
       setIsStarting(false);
     }
   }
-
-  const currentSPType = SP_TYPES.find((s) => s.value === spType);
 
   return (
     <div className="max-w-4xl mx-auto space-y-10">
@@ -147,28 +221,7 @@ export default function ResearchPage() {
         </div>
       </div>
 
-      {/* I Feel Lucky */}
-      <div className="rounded-2xl border border-orange-800 bg-gradient-to-br from-orange-950 via-amber-950 to-gray-900 p-6">
-        <div className="flex items-start gap-4">
-          <div className="text-3xl">🎲</div>
-          <div className="flex-1">
-            <div className="text-lg font-bold text-white">I Feel Lucky</div>
-            <div className="text-sm text-orange-300 mt-1">
-              Let the agent choose something interesting. It won&apos;t just pick the biggest loser —
-              it looks for surprising, volatile, strategic, or ambiguous assets worth investigating.
-            </div>
-          </div>
-        </div>
-        <button
-          onClick={() => startRun("lucky", "")}
-          disabled={isStarting}
-          className="mt-4 w-full rounded-xl bg-orange-500 hover:bg-orange-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 text-sm transition-all"
-        >
-          {isStarting ? "Starting research…" : "Start Research (Agent Chooses)"}
-        </button>
-      </div>
-
-      {/* Manual starting point */}
+      {/* Starting point */}
       <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6 space-y-4">
         <div className="text-sm font-semibold text-gray-300">Choose Your Starting Point</div>
 
@@ -192,24 +245,56 @@ export default function ResearchPage() {
           ))}
         </div>
 
-        {/* Value input */}
-        <input
-          type="text"
-          value={spValue}
-          onChange={(e) => setSpValue(e.target.value)}
-          placeholder={currentSPType?.placeholder || "Enter value..."}
-          className="w-full rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && spValue.trim()) startRun(spType, spValue.trim());
-          }}
-        />
+        {/* Input with dice button */}
+        <div className="relative">
+          <input
+            type="text"
+            value={spValue}
+            onChange={(e) => setSpValue(e.target.value)}
+            placeholder={currentSPMeta.placeholder}
+            className={`w-full rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition-colors ${
+              hasDice ? "pr-11" : ""
+            }`}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && spValue.trim()) startRun(spType, spValue.trim());
+            }}
+          />
+          {hasDice && (
+            <button
+              onClick={rollDice}
+              disabled={diceLoading}
+              title="Roll dice — pick a random suggestion"
+              className={`absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-md transition-all ${
+                diceLoading
+                  ? "text-indigo-400 cursor-wait"
+                  : spValue
+                  ? "text-indigo-400 hover:text-indigo-300 hover:bg-indigo-950"
+                  : "text-gray-500 hover:text-gray-300 hover:bg-gray-700"
+              }`}
+            >
+              {diceLoading ? (
+                <svg
+                  className="w-4 h-4 animate-spin"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                </svg>
+              ) : (
+                <DiceIcon className="w-4 h-4" />
+              )}
+            </button>
+          )}
+        </div>
 
         <button
           onClick={() => startRun(spType, spValue.trim())}
           disabled={isStarting || !spValue.trim()}
           className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 text-sm transition-all"
         >
-          {isStarting ? "Starting research…" : `Start Research from this ${currentSPType?.label}`}
+          {isStarting ? "Starting research…" : `Start Research from this ${currentSPMeta.label}`}
         </button>
       </div>
 
