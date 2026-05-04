@@ -392,12 +392,12 @@ def _get_lucky_candidates() -> list[dict]:
         pool = rows[3:] if len(rows) > 3 else rows  # skip top 3 to avoid always biggest
         for r in random.sample(pool, min(5, len(pool))):
             candidates.append({
-                "type": "keyword",
-                "value": r["ad_group_name"],
-                "campaign": r["campaign_name"],
+                "type": "campaign",
+                "value": r["campaign_name"],
+                "ad_group": r["ad_group_name"],
                 "clicks": r["clicks"], "spend": float(r["spend"] or 0),
                 "convs": float(r["convs"] or 0),
-                "note": "Bing ad group",
+                "note": f"Bing campaign (ad group: {r['ad_group_name']})",
             })
     except Exception:
         pass
