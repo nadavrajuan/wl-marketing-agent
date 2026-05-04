@@ -133,7 +133,8 @@ TABLE weightagent.BingAds.ad_performance  (daily, by ad group)
 
 TABLE weightagent.BingAds.keywords  (keyword entities, not daily stats)
   account_id, keyword_id, ad_group_id (STRING), campaign_id (STRING),
-  keyword_text (STRING), match_type (STRING), cpc_bid (FLOAT64), status (STRING)
+  keyword_text (STRING), match_type (STRING: MatchType.EXACT | MatchType.PHRASE | MatchType.BROAD),
+  cpc_bid (FLOAT64), status (STRING: KeywordStatus.ACTIVE | KeywordStatus.PAUSED)
 
 TABLE weightagent.BingAds.campaigns
   account_id, campaign_id (STRING), campaign_name (STRING), status (STRING),
@@ -424,7 +425,7 @@ def _get_lucky_candidates() -> list[dict]:
     try:
         rows = bq.run_query("""
             SELECT DISTINCT keyword_text FROM weightagent.BingAds.keywords
-            WHERE status = 'Active' LIMIT 60
+            WHERE status = 'KeywordStatus.ACTIVE' LIMIT 60
         """, max_rows=60)
         for r in random.sample(rows, min(6, len(rows))):
             candidates.append({
@@ -565,10 +566,8 @@ Notes from previous runs (use as context):
 Available data sources:
 - BigQuery (query_bigquery): visits, conversions/funnel events, Bing ad spend, Google keyword stats, RSA ad copy, search terms
 - Crawl (crawl_url): competitor pages, partner brand pages, landing pages
-- NOTE: PostgreSQL has no analytics data — only use query_bigquery for all analytics
-
 Respond with JSON:
-{{"plan_summary":"one paragraph","steps":[{{"step":1,"focus":"...","source":"query_postgres|query_bigquery|crawl_url","why":"..."}}]}}"""),
+{{"plan_summary":"one paragraph","steps":[{{"step":1,"focus":"...","source":"query_bigquery|crawl_url","why":"..."}}]}}"""),
     ])
 
     try:
@@ -657,7 +656,7 @@ def finish(reason: str) -> str:
     return "done"
 
 
-_TOOLS = [query_postgres, query_bigquery, crawl_url, record_finding, change_direction, finish]
+_TOOLS = [query_bigquery, crawl_url, record_finding, change_direction, finish]
 
 
 # ─── LangGraph: graph builder ─────────────────────────────────────────────────
