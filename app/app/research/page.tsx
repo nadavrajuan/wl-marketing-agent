@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type StartingPointType =
   | "keyword"
@@ -17,6 +18,18 @@ interface LuckyCandidate {
   type: string;
   value: string;
   [key: string]: unknown;
+}
+
+interface PastRun {
+  run_id: string;
+  status: string;
+  created_at: string | null;
+  starting_point_type: string;
+  starting_point_value: string;
+  depth: string;
+  iteration_count: number;
+  duration_seconds: number | null;
+  executive_summary: string;
 }
 
 const SP_TYPES: { value: StartingPointType; label: string; placeholder: string; luckyTypes: string[] }[] = [
@@ -74,6 +87,25 @@ function DiceIcon({ className }: { className?: string }) {
   );
 }
 
+const STATUS_DOT: Record<string, string> = {
+  completed: "bg-green-500",
+  running:   "bg-blue-400 animate-pulse",
+  failed:    "bg-red-500",
+  stopped:   "bg-gray-500",
+};
+
+function fmtDuration(s: number | null): string {
+  if (!s) return "";
+  if (s < 60) return `${Math.round(s)}s`;
+  return `${Math.round(s / 60)}m`;
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 export default function ResearchPage() {
   const router = useRouter();
   const [maxIterations, setMaxIterations] = useState(20);
@@ -85,6 +117,16 @@ export default function ResearchPage() {
   const [diceLoading, setDiceLoading] = useState(false);
   const [luckyCache, setLuckyCache] = useState<LuckyCandidate[]>([]);
   const [usedIndices, setUsedIndices] = useState<Set<number>>(new Set());
+
+  // Past runs
+  const [pastRuns, setPastRuns] = useState<PastRun[]>([]);
+
+  useEffect(() => {
+    fetch("/api/research")
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setPastRuns(data); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     setUsedIndices(new Set());
@@ -257,6 +299,48 @@ export default function ResearchPage() {
           {isStarting ? "Starting…" : `Start ${maxIterations}-step investigation from this ${currentSPMeta.label}`}
         </button>
       </div>
+
+      {/* Past runs */}
+      {pastRuns.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Past Runs</div>
+          <div className="space-y-2">
+            {pastRuns.map((run) => (
+              <Link
+                key={run.run_id}
+                href={`/research/${run.run_id}`}
+                className="flex items-start gap-3 rounded-xl border border-gray-800 bg-gray-900 px-4 py-3 hover:border-gray-600 hover:bg-gray-800/60 transition-all group"
+              >
+                {/* Status dot */}
+                <div className="mt-1.5 shrink-0">
+                  <span className={`block w-2 h-2 rounded-full ${STATUS_DOT[run.status] ?? "bg-gray-600"}`} />
+                </div>
+
+                {/* Main content */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-white truncate max-w-xs">{run.starting_point_value}</span>
+                    <span className="text-xs text-gray-500 shrink-0">{run.starting_point_type}</span>
+                  </div>
+                  {run.executive_summary && (
+                    <p className="mt-0.5 text-xs text-gray-400 line-clamp-1">{run.executive_summary}</p>
+                  )}
+                </div>
+
+                {/* Meta */}
+                <div className="shrink-0 text-right text-xs text-gray-500 space-y-0.5">
+                  <div>{fmtDate(run.created_at)}</div>
+                  <div className="flex items-center gap-1.5 justify-end">
+                    <span>{run.iteration_count} steps</span>
+                    {run.duration_seconds && <span>· {fmtDuration(run.duration_seconds)}</span>}
+                    <span className="capitalize">· {run.depth}</span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

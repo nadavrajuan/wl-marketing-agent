@@ -615,43 +615,36 @@ Always distinguish: evidence | hypothesis | recommendation | open_question""",
 Current focus: {current_focus}
 Step {iteration}/{max_iterations} — {remaining} remaining
 
-Actions taken:
+Actions so far:
 {actions_taken}
 
-Findings so far:
+Findings:
 {findings}
 
 Direction changes: {direction_changes}
 
 ────────────────────────────────────────────────────────────────────
-WHAT TO DO NOW:
+What number in the data surprised you most? Go there next.
 
-Look at the data you have. What is the single most unexpected number? That is where to go next.
+No data yet → query the starting point immediately. Nothing to think about until you have numbers.
 
-If no data yet: run a query on the starting point immediately. Get numbers before anything else.
+Have data → find the one thing that doesn't fit. Run one more targeted query on exactly that anomaly. Not a sweep — a surgical follow-up.
 
-If you have data:
-- Identify the biggest anomaly or gap. Dig into it specifically.
-- If CTR or CVR looks off: check ad copy and landing page for that exact asset.
-- If spend is high with no conversions: find which ad group, device, or match type is burning budget.
-- If a pattern appears: verify it with a second query — does it hold across other campaigns, or is it isolated?
-- Never record what you already know from a previous step. Never run a query you already ran.
+Your SQL schema reference (tables, column types, join patterns, type gotchas) is in the system prompt. Read it before writing any query.
 
-If remaining steps ≤ 4: stop opening new threads. Record your strongest data-backed findings and call finish.
-
-Tools:
-- query_bigquery: visits, conversions, Bing ad_performance, Google KeywordStats, RSA ads, search terms. Always use full table paths from the schema.
-- crawl_url: landing pages, competitor SERPs, partner pages.
-- record_finding: only for non-obvious findings that include a specific number.
-- change_direction: when the data tells you to go somewhere more important.
-- finish: when you have strong findings or steps are exhausted.""",
+≤ 4 steps left → stop opening new threads. Record only findings you can back with a specific number. Then finish.""",
     },
 }
 
 
 def _seed_prompts(db: Session):
     for name, data in DEFAULT_PROMPTS.items():
-        if not db.query(Prompt).filter_by(name=name).first():
+        existing = db.query(Prompt).filter_by(name=name).first()
+        if existing:
+            existing.display_name = data["display_name"]
+            existing.description  = data["description"]
+            existing.content      = data["content"]
+        else:
             db.add(Prompt(
                 name=name,
                 display_name=data["display_name"],
