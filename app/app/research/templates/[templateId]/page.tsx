@@ -15,13 +15,15 @@ const SP_TYPE_OPTIONS = [
   { value: "question", label: "Research Question" },
 ];
 
-const MODEL_SUGGESTIONS = [
-  "gpt-4.5-preview",
-  "gpt-4o",
-  "gpt-4o-mini",
-  "o4-mini",
-  "gpt-4.5",
-  "gpt-5.4",
+const MODEL_SUGGESTIONS: { id: string; label: string; note: string }[] = [
+  { id: "o4-mini",          label: "o4-mini",          note: "reasoning" },
+  { id: "o4.5",             label: "o4.5",             note: "reasoning" },
+  { id: "o3",               label: "o3",               note: "reasoning" },
+  { id: "o3-mini",          label: "o3-mini",          note: "reasoning" },
+  { id: "gpt-4.5-preview",  label: "gpt-4.5-preview",  note: "" },
+  { id: "gpt-4.5",          label: "gpt-4.5",          note: "" },
+  { id: "gpt-4o",           label: "gpt-4o",           note: "" },
+  { id: "gpt-4o-mini",      label: "gpt-4o-mini",      note: "" },
 ];
 
 const VARIABLES: { name: string; desc: string }[] = [
@@ -252,7 +254,7 @@ export default function TemplateEditorPage() {
                 type="text"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                placeholder="e.g. gpt-4o (blank = use global default)"
+                placeholder="e.g. o4-mini  (blank = global default)"
                 className="flex-1 rounded-lg bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition-colors placeholder-gray-600"
               />
               <button
@@ -263,18 +265,24 @@ export default function TemplateEditorPage() {
               </button>
             </div>
             {showModelDropdown && (
-              <div className="absolute right-0 top-full mt-1 z-50 rounded-xl border border-gray-700 bg-gray-900 shadow-xl overflow-hidden min-w-[180px]">
+              <div className="absolute right-0 top-full mt-1 z-50 rounded-xl border border-gray-700 bg-gray-900 shadow-xl overflow-hidden min-w-[220px]">
                 {MODEL_SUGGESTIONS.map((m) => (
                   <button
-                    key={m}
-                    onClick={() => { setModel(m); setShowModelDropdown(false); }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 font-mono transition-colors"
+                    key={m.id}
+                    onClick={() => { setModel(m.id); setShowModelDropdown(false); }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors flex items-center justify-between gap-3"
                   >
-                    {m}
+                    <span className="font-mono">{m.label}</span>
+                    {m.note && (
+                      <span className="text-xs text-amber-500 shrink-0">{m.note}</span>
+                    )}
                   </button>
                 ))}
               </div>
             )}
+          </div>
+          <div className="text-xs text-gray-600 mt-1.5">
+            o-series models (o3, o4-mini, o4.5…) don&apos;t accept temperature — handled automatically.
           </div>
         </div>
 

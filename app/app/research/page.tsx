@@ -122,6 +122,7 @@ export default function ResearchPage() {
   const [spType, setSpType] = useState<StartingPointType>("keyword");
   const [spValue, setSpValue] = useState("");
   const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState("");
 
   // Dice state
   const [diceLoading, setDiceLoading] = useState(false);
@@ -206,6 +207,7 @@ export default function ResearchPage() {
 
   async function startRun(type: StartingPointType, value: string) {
     setIsStarting(true);
+    setStartError("");
     try {
       const res = await fetch("/api/research", {
         method: "POST",
@@ -219,9 +221,15 @@ export default function ResearchPage() {
         }),
       });
       const data = await res.json();
-      if (data.run_id) router.push(`/research/${data.run_id}`);
+      if (data.run_id) {
+        router.push(`/research/${data.run_id}`);
+      } else {
+        setStartError(data.error || data.detail || "Failed to start run.");
+        setIsStarting(false);
+      }
     } catch (e) {
       console.error(e);
+      setStartError("Could not reach the agent. Check server logs.");
       setIsStarting(false);
     }
   }
@@ -420,6 +428,9 @@ export default function ResearchPage() {
         >
           {isStarting ? "Starting…" : `Start ${maxIterations}-step investigation from this ${currentSPMeta.label}`}
         </button>
+        {startError && (
+          <div className="text-xs text-red-400 text-center mt-1">{startError}</div>
+        )}
       </div>
 
       {/* Past runs */}

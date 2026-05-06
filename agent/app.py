@@ -554,9 +554,11 @@ async def research_start_run(
         try:
             tpl = tpl_db.query(ResearchTemplate).filter_by(id=template_id).first()
             if tpl:
-                system_prompt_override = tpl.system_prompt  # None means use global default
+                system_prompt_override = tpl.system_prompt
                 step_prompt_override   = tpl.step_prompt
                 template_model         = tpl.model
+        except Exception as _tpl_err:
+            print(f"[template lookup] {_tpl_err}")
         finally:
             tpl_db.close()
 
