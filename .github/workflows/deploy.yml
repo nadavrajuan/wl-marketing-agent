@@ -132,7 +132,7 @@ jobs:
             ADMIN_USERNAME=${{ secrets.ADMIN_USERNAME }}
             ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-            OPENAI_MODEL=gpt-4o
+            OPENAI_MODEL=gpt-4.5-preview
             BIGQUERY_PROJECT_ID=${{ secrets.BIGQUERY_PROJECT_ID }}
             BIGQUERY_DATASET=${{ secrets.BIGQUERY_DATASET }}
             GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/bigquery-service-account.json

@@ -10,7 +10,7 @@ from typing import Optional
 
 from sqlalchemy import (
     create_engine, Column, Integer, String, Text, Float, DateTime,
-    Boolean, ForeignKey, event
+    Boolean, ForeignKey, event, text
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from sqlalchemy.pool import StaticPool
@@ -156,9 +156,24 @@ def get_db():
         db.close()
 
 
+def _migrate_columns(db: Session):
+    """Add new columns that may be missing from tables created by older schema versions."""
+    migrations = [
+        "ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS template_id VARCHAR",
+        "ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS model VARCHAR",
+    ]
+    for sql in migrations:
+        try:
+            db.execute(text(sql))
+        except Exception as e:
+            print(f"[migration] {sql!r}: {e}")
+    db.commit()
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
+    _migrate_columns(db)
     _seed_prompts(db)
     _seed_templates(db)
     _seed_config(db)
