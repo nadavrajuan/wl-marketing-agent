@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -13,6 +13,16 @@ type StartingPointType =
   | "brand"
   | "competitor_url"
   | "question";
+
+interface Template {
+  id: string;
+  name: string;
+  description: string;
+  model: string | null;
+  is_builtin: boolean;
+  has_system_prompt: boolean;
+  has_step_prompt: boolean;
+}
 
 interface LuckyCandidate {
   type: string;
@@ -118,6 +128,12 @@ export default function ResearchPage() {
   const [luckyCache, setLuckyCache] = useState<LuckyCandidate[]>([]);
   const [usedIndices, setUsedIndices] = useState<Set<number>>(new Set());
 
+  // Template state
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("default");
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const templateRef = useRef<HTMLDivElement>(null);
+
   // Past runs
   const [pastRuns, setPastRuns] = useState<PastRun[]>([]);
 
@@ -131,6 +147,36 @@ export default function ResearchPage() {
   useEffect(() => {
     setUsedIndices(new Set());
   }, [spType]);
+
+  // Load templates when spType changes
+  useEffect(() => {
+    fetch(`/api/research/templates?type=${spType}`)
+      .then((r) => r.json())
+      .then((data: Template[]) => {
+        if (Array.isArray(data)) {
+          setTemplates(data);
+          // Auto-select "default" if available, else first
+          const hasSelected = data.find((t) => t.id === selectedTemplateId);
+          if (!hasSelected) {
+            const def = data.find((t) => t.id === "default");
+            setSelectedTemplateId(def ? def.id : data[0]?.id ?? "default");
+          }
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spType]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (templateRef.current && !templateRef.current.contains(e.target as Node)) {
+        setTemplateOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   const currentSPMeta = SP_TYPES.find((s) => s.value === spType)!;
   const hasDice = currentSPMeta.luckyTypes.length > 0;
@@ -169,6 +215,7 @@ export default function ResearchPage() {
           starting_point_value: value,
           depth: getDepthKey(maxIterations),
           max_iterations: maxIterations,
+          template_id: selectedTemplateId,
         }),
       });
       const data = await res.json();
@@ -260,6 +307,81 @@ export default function ResearchPage() {
             </button>
           ))}
         </div>
+
+        {/* Template selector */}
+        {templates.length > 0 && (() => {
+          const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? templates[0];
+          return (
+            <div ref={templateRef} className="relative">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 shrink-0">Template:</span>
+                <button
+                  onClick={() => setTemplateOpen((o) => !o)}
+                  className="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 hover:border-gray-600 px-3 py-1.5 text-xs text-gray-300 transition-all min-w-0"
+                >
+                  <span className="font-medium truncate max-w-[180px]">{selectedTemplate?.name ?? "Default"}</span>
+                  {selectedTemplate?.model && (
+                    <span className="shrink-0 rounded bg-gray-700 px-1.5 py-0.5 text-gray-400 font-mono text-[10px]">
+                      {selectedTemplate.model}
+                    </span>
+                  )}
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-gray-500">
+                    <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={() => router.push(`/research/templates/${selectedTemplateId}`)}
+                  title="Edit template"
+                  className="rounded-md p-1.5 text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-all"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                    <path d="M11.5 2.5a1.414 1.414 0 0 1 2 2L5 13H3v-2L11.5 2.5z"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={() => router.push(`/research/templates/new?type=${spType}`)}
+                  title="Create new template"
+                  className="rounded-md p-1.5 text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-all"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="w-3.5 h-3.5">
+                    <path d="M8 3v10M3 8h10"/>
+                  </svg>
+                </button>
+              </div>
+
+              {templateOpen && (
+                <div className="absolute left-0 top-full mt-1 z-50 min-w-[280px] rounded-xl border border-gray-700 bg-gray-900 shadow-xl overflow-hidden">
+                  {templates.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => { setSelectedTemplateId(t.id); setTemplateOpen(false); }}
+                      className={`w-full text-left px-4 py-3 transition-colors border-b border-gray-800 last:border-0 ${
+                        t.id === selectedTemplateId
+                          ? "bg-indigo-950 text-white"
+                          : "hover:bg-gray-800 text-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{t.name}</span>
+                        {t.model && (
+                          <span className="rounded bg-gray-700 px-1.5 py-0.5 text-gray-400 font-mono text-[10px]">{t.model}</span>
+                        )}
+                        {t.id === selectedTemplateId && (
+                          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 ml-auto text-indigo-400">
+                            <path d="M13.5 4L6.5 11 2.5 7" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </div>
+                      {t.description && (
+                        <div className="text-xs text-gray-500 mt-0.5 line-clamp-2">{t.description}</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Input with dice */}
         <div className="relative">

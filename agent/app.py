@@ -27,9 +27,9 @@ from sqlalchemy.exc import OperationalError
 from database import (
     init_db, SessionLocal, get_db,
     Run, RunStep, Prompt, AppConfig, RunChatMessage, User,
-    ResearchRun, ResearchStep,
+    ResearchRun, ResearchStep, ResearchTemplate,
     get_config, set_config, get_prompt, authenticate, update_run, save_step,
-    DEFAULT_PROMPTS,
+    DEFAULT_PROMPTS, DEFAULT_TEMPLATES,
 )
 from db_client import get_quick_stats
 from ingestion import IngestPayload, ingest_bing_ads_payload, ingest_google_ads_payload
@@ -273,7 +273,7 @@ async def config_page(request: Request, db: Session = Depends(get_db)):
     require_auth(request)
     cfg = {
         "max_iterations":  get_config(db, "max_iterations", "6"),
-        "openai_model":    get_config(db, "openai_model", "gpt-4.5"),
+        "openai_model":    get_config(db, "openai_model", "gpt-4.5-preview"),
         "email_recipients":get_config(db, "email_recipients", ""),
     }
     return templates.TemplateResponse(request, "config.html", {"cfg": cfg})
@@ -282,7 +282,7 @@ async def config_page(request: Request, db: Session = Depends(get_db)):
 async def save_config(
     request: Request,
     max_iterations: str  = Form("6"),
-    openai_model: str    = Form("gpt-4.5"),
+    openai_model: str    = Form("gpt-4.5-preview"),
     email_recipients: str= Form(""),
     db: Session          = Depends(get_db),
 ):
@@ -305,7 +305,7 @@ async def api_trigger_run(request: Request, db: Session = Depends(get_db)):
     require_auth(request)
     body = await request.json()
     goal  = body.get("goal", "Find optimization opportunities — maximize purchases, minimize cost")
-    model = body.get("model") or get_config(db, "openai_model", "gpt-4.5")
+    model = body.get("model") or get_config(db, "openai_model", "gpt-4.5-preview")
     max_iter = int(get_config(db, "max_iterations", "6"))
 
     run_id = str(uuid.uuid4())[:8]
@@ -493,7 +493,7 @@ Be specific with numbers. Keep responses focused and actionable."""
             messages.append(AIMessage(content=msg.content))
     messages.append(HumanMessage(content=user_msg))
 
-    model = get_config(db, "openai_model", "gpt-4.5")
+    model = get_config(db, "openai_model", "gpt-4.5-preview")
 
     async def stream_response():
         full_response = ""
@@ -541,8 +541,28 @@ async def research_start_run(
     sp_type       = body.get("starting_point_type", "lucky")
     sp_value      = body.get("starting_point_value", "")
     depth         = body.get("depth", "standard")
-    model         = body.get("model") or os.getenv("OPENAI_MODEL", "gpt-4.5")
+    model         = body.get("model") or os.getenv("OPENAI_MODEL", "gpt-4.5-preview")
     max_iter_body = int(body.get("max_iterations", 0))
+    template_id   = body.get("template_id", "default")
+
+    # Look up template and extract overrides
+    system_prompt_override = None
+    step_prompt_override   = None
+    template_model         = None
+    if template_id:
+        tpl_db = SessionLocal()
+        try:
+            tpl = tpl_db.query(ResearchTemplate).filter_by(id=template_id).first()
+            if tpl:
+                system_prompt_override = tpl.system_prompt  # None means use global default
+                step_prompt_override   = tpl.step_prompt
+                template_model         = tpl.model
+        finally:
+            tpl_db.close()
+
+    # Template model overrides env default (but explicit body model wins over template)
+    if not body.get("model") and template_model:
+        model = template_model
 
     run_id = str(uuid.uuid4())[:8]
     db = SessionLocal()
@@ -553,6 +573,7 @@ async def research_start_run(
         starting_point_value=sp_value,
         depth=depth,
         model=model,
+        template_id=template_id,
         created_at=datetime.utcnow(),
     ))
     db.commit()
@@ -590,6 +611,8 @@ async def research_start_run(
                 db_session=agent_db,
                 step_callback=step_callback,
                 max_iterations=max_iter_body,
+                system_prompt_override=system_prompt_override,
+                step_prompt_override=step_prompt_override,
             )
             duration = time.time() - start_time
             agent_db.query(ResearchRun).filter_by(run_id=run_id).update({
@@ -805,6 +828,111 @@ async def research_reset_prompt(
     return JSONResponse({"ok": True, "content": default_content})
 
 
+# ─── Research API — Templates ─────────────────────────────────────────────────
+
+@app.get("/agent/api/research/templates")
+async def research_list_templates(
+    type: str = None,
+    _: None = Depends(require_research_token),
+    db: Session = Depends(get_db),
+):
+    templates = db.query(ResearchTemplate).order_by(ResearchTemplate.created_at).all()
+    result = []
+    for t in templates:
+        types = json.loads(t.starting_point_types or '["any"]')
+        # filter: return if type matches or template is "any"
+        if type and "any" not in types and type not in types:
+            continue
+        result.append({
+            "id": t.id, "name": t.name, "description": t.description,
+            "starting_point_types": types,
+            "model": t.model, "is_builtin": t.is_builtin,
+            "has_system_prompt": bool(t.system_prompt),
+            "has_step_prompt": bool(t.step_prompt),
+            "system_prompt": t.system_prompt,
+            "step_prompt": t.step_prompt,
+        })
+    return JSONResponse(result)
+
+
+@app.post("/agent/api/research/templates")
+async def research_create_template(
+    request: Request,
+    _: None = Depends(require_research_token),
+    db: Session = Depends(get_db),
+):
+    body = await request.json()
+    tid = body.get("id") or re.sub(r'[^a-z0-9-]', '-', body.get("name", "template").lower())[:40]
+    # ensure unique
+    base = tid
+    suffix = 1
+    while db.query(ResearchTemplate).filter_by(id=tid).first():
+        tid = f"{base}-{suffix}"
+        suffix += 1
+    t = ResearchTemplate(
+        id=tid,
+        name=body.get("name", "New Template"),
+        description=body.get("description", ""),
+        starting_point_types=json.dumps(body.get("starting_point_types", ["any"])),
+        system_prompt=body.get("system_prompt") or None,
+        step_prompt=body.get("step_prompt") or None,
+        model=body.get("model") or None,
+        is_builtin=False,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(t)
+    db.commit()
+    return JSONResponse({"id": t.id, "name": t.name})
+
+
+@app.put("/agent/api/research/templates/{template_id}")
+async def research_update_template(
+    template_id: str,
+    request: Request,
+    _: None = Depends(require_research_token),
+    db: Session = Depends(get_db),
+):
+    t = db.query(ResearchTemplate).filter_by(id=template_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Template not found")
+    body = await request.json()
+    if "name" in body:        t.name = body["name"]
+    if "description" in body: t.description = body["description"]
+    if "starting_point_types" in body:
+        t.starting_point_types = json.dumps(body["starting_point_types"])
+    if "system_prompt" in body: t.system_prompt = body["system_prompt"] or None
+    if "step_prompt" in body:   t.step_prompt   = body["step_prompt"] or None
+    if "model" in body:         t.model         = body["model"] or None
+    t.updated_at = datetime.utcnow()
+    db.commit()
+    return JSONResponse({"id": t.id, "name": t.name})
+
+
+@app.delete("/agent/api/research/templates/{template_id}")
+async def research_delete_template(
+    template_id: str,
+    _: None = Depends(require_research_token),
+    db: Session = Depends(get_db),
+):
+    t = db.query(ResearchTemplate).filter_by(id=template_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if t.is_builtin:
+        # For built-in templates, reset to defaults instead of deleting
+        if template_id in DEFAULT_TEMPLATES:
+            defaults = DEFAULT_TEMPLATES[template_id]
+            t.system_prompt = defaults.get("system_prompt")
+            t.step_prompt   = defaults.get("step_prompt")
+            t.model         = defaults.get("model")
+            db.commit()
+            return JSONResponse({"reset": True, "id": t.id})
+        raise HTTPException(status_code=403, detail="Cannot delete built-in template")
+    db.delete(t)
+    db.commit()
+    return JSONResponse({"deleted": True})
+
+
 # ─── Research API — Lucky candidates ──────────────────────────────────────────
 
 @app.get("/agent/api/research/lucky")
@@ -908,7 +1036,7 @@ async def search_query_cluster(
 
     try:
         label_resp = oai.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-4.5"),
+            model=os.getenv("OPENAI_MODEL", "gpt-4.5-preview"),
             temperature=0,
             messages=[
                 {

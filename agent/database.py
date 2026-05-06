@@ -110,9 +110,24 @@ class ResearchRun(Base):
     findings_json        = Column(Text, default="[]")
     executive_summary    = Column(Text)
     model                = Column(String)
+    template_id          = Column(String, nullable=True)
     iteration_count      = Column(Integer, default=0)
     duration_seconds     = Column(Float, nullable=True)
     error_log            = Column(Text, default="[]")
+
+
+class ResearchTemplate(Base):
+    __tablename__ = "research_templates"
+    id                   = Column(String, primary_key=True)   # slug, e.g. "default" or "keyword-deep-dive"
+    name                 = Column(String)
+    description          = Column(Text)
+    starting_point_types = Column(Text, default='["any"]')    # JSON array, "any" matches all types
+    system_prompt        = Column(Text, nullable=True)         # None = use global default prompt
+    step_prompt          = Column(Text, nullable=True)         # None = use global default prompt
+    model                = Column(String, nullable=True)        # None = use global/env default
+    is_builtin           = Column(Boolean, default=False)      # built-in templates can be reset but not deleted
+    created_at           = Column(DateTime, default=datetime.utcnow)
+    updated_at           = Column(DateTime, default=datetime.utcnow)
 
 
 class ResearchStep(Base):
@@ -145,6 +160,7 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     _seed_prompts(db)
+    _seed_templates(db)
     _seed_config(db)
     _seed_admin(db)
     db.close()
@@ -165,7 +181,7 @@ def _seed_admin(db: Session):
 def _seed_config(db: Session):
     defaults = {
         "max_iterations": "6",
-        "openai_model": os.getenv("OPENAI_MODEL", "gpt-4o"),
+        "openai_model": os.getenv("OPENAI_MODEL", "gpt-4.5-preview"),
         "email_recipients": "",
     }
     for k, v in defaults.items():
@@ -696,5 +712,186 @@ def _seed_prompts(db: Session):
                 display_name=data["display_name"],
                 description=data["description"],
                 content=data["content"],
+            ))
+    db.commit()
+
+
+# ─── Default Templates ────────────────────────────────────────────────────────
+
+DEFAULT_TEMPLATES = {
+    "default": {
+        "name": "Default",
+        "description": "General-purpose investigation. Follows the data wherever it leads.",
+        "starting_point_types": ["any"],
+        "system_prompt": None,
+        "step_prompt": None,
+        "model": None,
+        "is_builtin": True,
+    },
+    "keyword-deep-dive": {
+        "name": "Keyword Deep-Dive",
+        "description": "Structured 9-phase investigation: SERP → keyword data → ad copy → LP routing → LP crawl → competitor crawl → competitor landscape → Bing → partner verification.",
+        "starting_point_types": ["keyword"],
+        "model": "gpt-4.5-preview",
+        "is_builtin": True,
+        "system_prompt": """INVESTIGATION TEMPLATE: Keyword Deep-Dive
+Follow these phases in order. You may combine phases if data is clear, but never skip Phase 1 (SERP) or Phase 5 (LP crawl).
+
+━━━ PHASE 1 — SERP RECONNAISSANCE (WebSearch) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Search the keyword verbatim. Record:
+- Who appears (brand pages, editorial, comparison sites, our domain)
+- What page types dominate (reviews? brand? clinical content?)
+- Whether our URL appears organically and for which specific URL
+- What language competitors use for this concept
+
+The organic URL is what users see regardless of what the ad serves.
+
+━━━ PHASE 2 — KEYWORD PERFORMANCE (query_bigquery) ━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Query ads_SearchQueryStats_4808949235 using LIKE patterns on the keyword.
+Join with ads_AdGroup_4808949235 and ads_Campaign_4808949235 to get campaign/ad group names.
+Get: impressions, clicks, CTR, conversions, cost, CPC.
+
+IMPORTANT: If the exact term returns fewer than 10 clicks, immediately expand to the semantic cluster.
+For "weight reduction shots" → also query "weight loss shots", "weight loss injections", "diet shots".
+Run both queries. Thin data on exact term is normal; the cluster tells the story.
+
+━━━ PHASE 3 — AD COPY VERIFICATION (query_bigquery) ━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Query ads_Ad_4808949235 filtered by the ad_group_id from Phase 2.
+RSA headlines and descriptions are stored as JSON arrays — parse them.
+Key question: does the ad use the user's own language?
+If user searched "shots" but ad says "medications" → the chain breaks at impression level. Record this as a finding.
+
+━━━ PHASE 4 — LP ROUTING BY DTI (query_bigquery) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Query WeightAgent.visits LEFT JOIN WeightAgent.conversions.
+Group by dti, device. Calculate CVR (goal_events / quiz_starts) and EPV (revenue / visits).
+Find which dti variant receives the campaign's traffic.
+dti=None (untagged) is a critical finding — these visits have no LP assignment.
+CVR varies 4-5x across dti variants. Wrong routing is often the biggest single lever.
+
+━━━ PHASE 5 — OUR LP AUDIT (crawl_url) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Crawl the LP URL for the dti found in Phase 4. Extract in this order:
+1. HTML <title> tag — what shows in browser tabs AND SERP snippets. Different from H1. "Google Desktop" or internal labels in the title are credibility-killing bugs.
+2. <meta name="description"> — if missing, note it explicitly. Google writes its own, losing intent match.
+3. H1 text — the first heading the user sees.
+4. Keyword presence — count occurrences of the exact search term AND semantic variants. Zero = zero relevance signal.
+5. Partner list — names, order, scores, prices shown.
+6. Trust signals — testimonials, patient count, date updated.
+
+━━━ PHASE 6 — COMPETITOR LP AUDIT (crawl_url) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Crawl the top 2-3 organic results from Phase 1. For each:
+- Page title and meta description (do they have one? what does it say?)
+- H1 and heading structure
+- Whether they use the exact keyword phrase or semantic variants
+- Partner #1, lead price shown, trust signals, CTA copy
+
+If a competitor page returns 403 → note it, use PostgreSQL competitor_landscape_snapshots instead.
+
+━━━ PHASE 7 — COMPETITOR LANDSCAPE (query_data, PostgreSQL) ━━━━━━━━━━━━━━━━━
+
+Run this query:
+  SELECT src.name, snap.page_title, snap.meta_description,
+    elem->>'rank' AS rank, elem->>'canonical_name' AS partner, elem->>'score' AS score
+  FROM competitor_landscape_snapshots snap
+  JOIN competitor_landscape_sources src ON src.slug = snap.source_slug
+  CROSS JOIN LATERAL jsonb_array_elements(snap.extracted_json->'partners') AS elem
+  WHERE snap.snapshot_date = (SELECT MAX(snapshot_date) FROM competitor_landscape_snapshots)
+  ORDER BY src.name, (elem->>'rank')::int NULLS LAST LIMIT 150;
+
+Find: where does our #1 partner rank on Forbes, Top10, Yahoo Health?
+Is our ranking diverging from editorial consensus? That divergence is intentional — but it needs justification when CVR is low.
+
+━━━ PHASE 8 — BING CHECK (query_bigquery) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Query BingAds.ad_performance for the same keyword pattern (LIKE '%keyword%' in ad_group_name or campaign_name).
+Get: clicks, spend, conversions. Same metrics as Google.
+A paused Bing campaign for a converting keyword cluster is a finding.
+Zero Bing data where Google converts well is also a finding.
+
+━━━ PHASE 9 — PARTNER PAGE VERIFICATION (crawl_url) ━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Crawl our #1 partner's actual website. Verify:
+1. Intro price vs. recurring price — we may show month-1, they show month-2. The delta is a finding.
+2. Trust signals on their site (patient count, media mentions, certifications) that we don't surface on our table.
+3. Claims we make about the partner vs. what they actually say. Mismatches erode trust.
+4. Medications offered — are we accurately representing their formulary?
+
+━━━ EXCEPTION HANDLING ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- BQ returns 0 rows for exact keyword → expand to LIKE '%root%' immediately, do not stop or record "no data"
+- crawl_url returns 403 or connection error → note the block, proceed with PostgreSQL landscape or WebSearch snippet
+- Partner page shows no pricing → WebSearch "[partner name] pricing" to find current rates
+- dti=None dominates visits → this IS the finding — flag as critical LP routing gap
+- BQ query error (type mismatch) → fix and retry: Google IDs are INTEGER, Bing campaign/ad group are STRING
+- Tool call error → skip it, record what data you have, continue to next phase
+- No Bing data → note it, check if ad group name pattern is different
+
+━━━ REPORT REQUIREMENTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Final report must include:
+1. Executive summary with 3 key numbers from this keyword's data
+2. Full funnel breakdown: Search → Ad → LP → Partner, what works and what breaks at each step
+3. Competitor comparison table: us vs top 2 competitors on title, meta, keyword match, partner #1
+4. Priority actions P0-P3, each backed by a specific number from the data""",
+        "step_prompt": """Starting point: [{starting_point_type}] "{starting_point_value}"
+Phase context: {current_focus}
+Step {iteration}/{max_iterations} — {remaining} remaining
+
+Actions so far:
+{actions_taken}
+
+Findings:
+{findings}
+
+Direction changes: {direction_changes}
+
+────────────────────────────────────────────────────────────────────
+Run through this checklist for where you are in the investigation:
+
+No data yet → Phase 1: WebSearch the keyword first. Then Phase 2: query BigQuery for search query stats.
+
+Have keyword stats → Phase 3: verify the ad copy. Phase 4: find the LP dti from visits data.
+
+Have dti → Phase 5: crawl our actual LP. Extract HTML title, meta description, keyword presence.
+
+Have our LP data → Phase 6: crawl top 2 competitor pages for the same keyword.
+
+Have competitor pages → Phase 7: query PostgreSQL competitor_landscape_snapshots for partner rankings.
+
+Have landscape data → Phase 8: check Bing. Phase 9: crawl the #1 partner's page. Verify claimed price vs actual.
+
+Near end (≤ 4 steps left) → stop opening new phases. Record remaining findings with specific numbers. Then finish.
+
+If a tool fails → note it, move to next phase. Do not retry the same failing call.
+SQL schema reference is in the system prompt.""",
+    },
+}
+
+
+def _seed_templates(db: Session):
+    for tid, data in DEFAULT_TEMPLATES.items():
+        existing = db.query(ResearchTemplate).filter_by(id=tid).first()
+        if existing and existing.is_builtin:
+            # update built-in fields except system_prompt/step_prompt/model
+            # (user may have customized those; only update if they haven't changed)
+            existing.name = data["name"]
+            existing.description = data["description"]
+            existing.starting_point_types = json.dumps(data["starting_point_types"])
+            existing.is_builtin = True
+        elif not existing:
+            db.add(ResearchTemplate(
+                id=tid,
+                name=data["name"],
+                description=data["description"],
+                starting_point_types=json.dumps(data["starting_point_types"]),
+                system_prompt=data.get("system_prompt"),
+                step_prompt=data.get("step_prompt"),
+                model=data.get("model"),
+                is_builtin=True,
             ))
     db.commit()

@@ -319,15 +319,21 @@ def _save_research_notes(db_session, new_section: str):
 
 # ─── Prompt helpers ───────────────────────────────────────────────────────────
 
-def _load_prompts(db_session) -> dict[str, str]:
+def _load_prompts(db_session, system_override=None, step_override=None) -> dict[str, str]:
     from database import DEFAULT_PROMPTS
     if db_session is None:
-        return {k: DEFAULT_PROMPTS[k]["content"] for k in ("research_system", "research_step_human")}
-    from database import get_prompt
-    return {
-        "research_system":     get_prompt(db_session, "research_system"),
-        "research_step_human": get_prompt(db_session, "research_step_human"),
-    }
+        base = {k: DEFAULT_PROMPTS[k]["content"] for k in ("research_system", "research_step_human")}
+    else:
+        from database import get_prompt
+        base = {
+            "research_system":     get_prompt(db_session, "research_system"),
+            "research_step_human": get_prompt(db_session, "research_step_human"),
+        }
+    if system_override:
+        base["research_system"] = system_override
+    if step_override:
+        base["research_step_human"] = step_override
+    return base
 
 
 # ─── HTML stripper ────────────────────────────────────────────────────────────
@@ -753,11 +759,13 @@ def _build_research_graph(
     sp_value: str,
     sp_reason: str,
     research_plan: str,
+    system_prompt_override=None,
+    step_prompt_override=None,
 ):
     cb  = step_callback
     llm = create_llm(model=model, temperature=0.4).bind_tools(_TOOLS)
 
-    prompts     = _load_prompts(db_session)
+    prompts     = _load_prompts(db_session, system_prompt_override, step_prompt_override)
     system_text = (
         prompts["research_system"] + "\n\n"
         + DOMAIN_CONTEXT + "\n\n"
@@ -1129,6 +1137,8 @@ def run_research(
     db_session=None,
     step_callback=None,
     max_iterations: int = 0,
+    system_prompt_override: str = None,
+    step_prompt_override: str = None,
 ) -> dict:
     cb    = step_callback
     model = model or os.getenv("OPENAI_MODEL", "gpt-4o")
@@ -1170,6 +1180,8 @@ def run_research(
         sp_value=state["starting_point_value"],
         sp_reason=state["starting_point_reason"],
         research_plan=state["research_plan"],
+        system_prompt_override=system_prompt_override,
+        step_prompt_override=step_prompt_override,
     )
 
     notes_ctx = (state.get("notes") or "")[:1000]
