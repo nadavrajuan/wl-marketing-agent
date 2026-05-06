@@ -273,7 +273,7 @@ async def config_page(request: Request, db: Session = Depends(get_db)):
     require_auth(request)
     cfg = {
         "max_iterations":  get_config(db, "max_iterations", "6"),
-        "openai_model":    get_config(db, "openai_model", "gpt-4o"),
+        "openai_model":    get_config(db, "openai_model", "gpt-4.5"),
         "email_recipients":get_config(db, "email_recipients", ""),
     }
     return templates.TemplateResponse(request, "config.html", {"cfg": cfg})
@@ -282,7 +282,7 @@ async def config_page(request: Request, db: Session = Depends(get_db)):
 async def save_config(
     request: Request,
     max_iterations: str  = Form("6"),
-    openai_model: str    = Form("gpt-4o"),
+    openai_model: str    = Form("gpt-4.5"),
     email_recipients: str= Form(""),
     db: Session          = Depends(get_db),
 ):
@@ -305,7 +305,7 @@ async def api_trigger_run(request: Request, db: Session = Depends(get_db)):
     require_auth(request)
     body = await request.json()
     goal  = body.get("goal", "Find optimization opportunities — maximize purchases, minimize cost")
-    model = body.get("model") or get_config(db, "openai_model", "gpt-4o")
+    model = body.get("model") or get_config(db, "openai_model", "gpt-4.5")
     max_iter = int(get_config(db, "max_iterations", "6"))
 
     run_id = str(uuid.uuid4())[:8]
@@ -493,7 +493,7 @@ Be specific with numbers. Keep responses focused and actionable."""
             messages.append(AIMessage(content=msg.content))
     messages.append(HumanMessage(content=user_msg))
 
-    model = get_config(db, "openai_model", "gpt-4o")
+    model = get_config(db, "openai_model", "gpt-4.5")
 
     async def stream_response():
         full_response = ""
@@ -541,7 +541,7 @@ async def research_start_run(
     sp_type       = body.get("starting_point_type", "lucky")
     sp_value      = body.get("starting_point_value", "")
     depth         = body.get("depth", "standard")
-    model         = body.get("model") or os.getenv("OPENAI_MODEL", "gpt-4o")
+    model         = body.get("model") or os.getenv("OPENAI_MODEL", "gpt-4.5")
     max_iter_body = int(body.get("max_iterations", 0))
 
     run_id = str(uuid.uuid4())[:8]
@@ -908,7 +908,7 @@ async def search_query_cluster(
 
     try:
         label_resp = oai.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o"),
+            model=os.getenv("OPENAI_MODEL", "gpt-4.5"),
             temperature=0,
             messages=[
                 {
