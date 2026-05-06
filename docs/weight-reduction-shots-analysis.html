@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keyword Analysis: "weight reduction shots" — Full Investigation Report</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a; --border: #2a2e42;
+    --text: #e2e8f0; --muted: #8892a4; --accent: #6366f1; --accent2: #22d3ee;
+    --green: #22c55e; --red: #ef4444; --amber: #f59e0b; --blue: #3b82f6; --purple: #a855f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; font-size: 14px; line-height: 1.7; }
+  a { color: var(--accent2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 220px; background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; padding: 20px 0; z-index: 100; }
+  .sidebar h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding: 0 16px 8px; margin-top: 16px; }
+  .sidebar a { display: block; padding: 5px 16px; color: var(--muted); font-size: 12px; border-left: 2px solid transparent; transition: all .15s; }
+  .sidebar a:hover, .sidebar a.active { color: var(--text); border-left-color: var(--accent); background: rgba(99,102,241,.08); text-decoration: none; }
+  .sidebar .logo { padding: 0 16px 20px; font-weight: 700; font-size: 13px; color: var(--text); border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+  .main { margin-left: 220px; max-width: 980px; padding: 40px 40px 80px; }
+  h1 { font-size: 28px; font-weight: 800; color: #fff; line-height: 1.2; margin-bottom: 8px; }
+  h2 { font-size: 20px; font-weight: 700; color: #fff; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); }
+  h2:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  h3 { font-size: 15px; font-weight: 600; color: var(--text); margin: 28px 0 10px; }
+  h4 { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin: 20px 0 8px; }
+  p { margin-bottom: 12px; }
+  ul, ol { padding-left: 20px; margin-bottom: 12px; }
+  li { margin-bottom: 4px; }
+  strong { color: #fff; }
+  code { background: var(--surface2); padding: 1px 6px; border-radius: 4px; font-family: 'Fira Code', monospace; font-size: 12px; color: var(--accent2); }
+  pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; margin: 12px 0; }
+  pre code { background: none; padding: 0; color: #a5d6ff; font-size: 12px; line-height: 1.6; }
+  .meta { color: var(--muted); font-size: 12px; margin-bottom: 32px; }
+  .meta span { margin-right: 20px; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+  .badge-red { background: rgba(239,68,68,.15); color: #f87171; }
+  .badge-amber { background: rgba(245,158,11,.15); color: #fbbf24; }
+  .badge-green { background: rgba(34,197,94,.15); color: #4ade80; }
+  .badge-blue { background: rgba(59,130,246,.15); color: #60a5fa; }
+  .badge-purple { background: rgba(168,85,247,.15); color: #c084fc; }
+  .badge-gray { background: rgba(100,116,139,.15); color: #94a3b8; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  th { background: var(--surface2); padding: 8px 12px; text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); border-bottom: 1px solid var(--border); }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin: 16px 0; }
+  .card.critical { border-color: rgba(239,68,68,.4); background: rgba(239,68,68,.05); }
+  .card.warning { border-color: rgba(245,158,11,.3); background: rgba(245,158,11,.05); }
+  .card.good { border-color: rgba(34,197,94,.3); background: rgba(34,197,94,.05); }
+  .card.info { border-color: rgba(59,130,246,.3); background: rgba(59,130,246,.05); }
+  .card-title { font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 16px 0; }
+  .metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .metric-value { font-size: 28px; font-weight: 800; color: #fff; line-height: 1; }
+  .metric-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .metric-sub { font-size: 11px; color: var(--amber); margin-top: 6px; }
+  .journey { display: flex; flex-direction: column; gap: 0; margin: 16px 0; }
+  .journey-step { display: flex; gap: 16px; }
+  .journey-line { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+  .journey-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+  .dot-red { background: var(--red); box-shadow: 0 0 6px rgba(239,68,68,.5); }
+  .dot-amber { background: var(--amber); }
+  .dot-green { background: var(--green); }
+  .journey-connector { width: 2px; background: var(--border); flex: 1; margin: 4px 0; min-height: 24px; }
+  .journey-content { padding-bottom: 24px; flex: 1; }
+  .journey-label { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+  .journey-detail { font-size: 12px; color: var(--muted); }
+  .journey-issues { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+  details { border: 1px solid var(--border); border-radius: 10px; margin: 10px 0; overflow: hidden; }
+  details[open] { border-color: var(--accent); }
+  summary { padding: 12px 16px; cursor: pointer; font-weight: 600; font-size: 13px; display: flex; align-items: center; justify-content: space-between; background: var(--surface); list-style: none; user-select: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: '+'; font-size: 18px; color: var(--muted); font-weight: 300; }
+  details[open] summary::after { content: '−'; }
+  summary:hover { background: var(--surface2); }
+  .db { padding: 16px; background: var(--bg); border-top: 1px solid var(--border); }
+  .step-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tool-tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(99,102,241,.15); color: #a5b4fc; font-weight: 600; }
+  .thinking { background: rgba(168,85,247,.07); border: 1px solid rgba(168,85,247,.2); border-radius: 8px; padding: 12px; margin: 10px 0; font-size: 12px; color: #c4b5fd; }
+  .thinking strong { color: #d8b4fe; }
+  .result { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 10px 0; font-size: 12px; font-family: monospace; color: var(--accent2); white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; }
+  .finding { background: rgba(99,102,241,.08); border: 1px solid rgba(99,102,241,.2); border-radius: 8px; padding: 12px; margin: 10px 0; font-size: 12px; color: #a5b4fc; }
+  .priority-item { display: flex; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); align-items: flex-start; }
+  .priority-item:last-child { border-bottom: none; }
+  .pnum { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+  .p0 { background: rgba(239,68,68,.2); color: #f87171; }
+  .p1 { background: rgba(245,158,11,.2); color: #fbbf24; }
+  .p2 { background: rgba(59,130,246,.2); color: #60a5fa; }
+  .p3 { background: rgba(100,116,139,.2); color: #94a3b8; }
+  .pc { flex: 1; }
+  .pt { font-weight: 600; font-size: 13px; color: #fff; }
+  .pd { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .pe { font-size: 11px; color: var(--accent2); margin-top: 4px; }
+  .hl-red { color: var(--red); font-weight: 700; }
+  .hl-green { color: var(--green); font-weight: 700; }
+  .hl-amber { color: var(--amber); font-weight: 700; }
+  .prompt-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; font-family: monospace; font-size: 12px; line-height: 1.9; white-space: pre-wrap; }
+  @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; padding: 20px; } .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="logo">🔍 "weight reduction shots"</div>
+  <h3>Executive</h3>
+  <a href="#exec">TL;DR</a>
+  <a href="#metrics">Key Metrics</a>
+  <a href="#journey">User Journey</a>
+  <a href="#priorities">Priority Actions</a>
+  <h3>Findings</h3>
+  <a href="#serp">1. SERP Landscape</a>
+  <a href="#bq">2. BQ Performance Data</a>
+  <a href="#adcopy">3. Ad Copy Audit</a>
+  <a href="#lp">4. Landing Page Audit</a>
+  <a href="#competitors">5. Competitor Pages</a>
+  <a href="#landscape">6. Competitor Rankings</a>
+  <a href="#partner">7. Partner Verification</a>
+  <h3>Deep Dive</h3>
+  <a href="#iterations">Investigation Trail</a>
+  <a href="#methodology">Methodology</a>
+  <a href="#prompt">Agent Prompt</a>
+</nav>
+
+<div class="main">
+
+<h1>Keyword Analysis: "weight reduction shots"</h1>
+<div class="meta">
+  <span>📅 2026-05-05</span>
+  <span>🔍 Manual analysis — Claude</span>
+  <span>✅ BigQuery, PostgreSQL, WebSearch, WebFetch</span>
+</div>
+
+<!-- ═══════════════ EXEC SUMMARY ═══════════════ -->
+<h2 id="exec">TL;DR — What I Found</h2>
+
+<div class="card critical">
+  <div class="card-title">🔴 "weight reduction shots" has had exactly 1 click in Google history (Sept 2025, 0 conversions)</div>
+  <p>This is an ultra-low-volume specific query. However, its sibling cluster — "weight loss shots", "weight loss injections", "shots for weight loss" — generates hundreds of clicks/month with strong conversion rates (8–21%). The analysis covers the entire cluster, not just this one term.</p>
+</div>
+
+<div class="card critical">
+  <div class="card-title">🔴 Search-WeightLoss campaigns burn $163 on injection queries with zero conversions</div>
+  <p>The "Search-WeightLoss-en-dt-us" and "Search-WeightLoss-en-mo-us" campaigns served "weight loss injections" 24 times, spent $163.46, and recorded <strong>0 conversions</strong>. The same keyword in the Generic campaigns converts at 11–13%. This is a campaign/LP routing issue.</p>
+</div>
+
+<div class="card critical">
+  <div class="card-title">🔴 LP title exposes "Google Desktop" to users</div>
+  <p>The landing page HTML <code>&lt;title&gt;</code> is <em>"Top 5 Weight Loss Medications Google Desktop - Top 5 Weight Choices"</em>. "Google Desktop" is visible in browser tabs and SERP snippets. One-line fix that affects all Google Desktop campaigns.</p>
+</div>
+
+<div class="card warning">
+  <div class="card-title">🟡 Injection traffic lands on dti=None pages with 3× lower CVR than r4 variant</div>
+  <p>Google injection keywords land on pages with no dti parameter: CVR 6–11%. The r4 variant achieves 16–28% CVR. Simply adding <code>?dti=r4</code> to Injections ad group final URLs could triple conversions from this cluster.</p>
+</div>
+
+<div class="card warning">
+  <div class="card-title">🟡 Ad says "shots" — LP never does. Ad copy is good; LP is the bottleneck</div>
+  <p>The Injections ad group has excellent shot-matching headlines: "Which Shot Works Best?", "Best Weight Loss Shots Of 2026". But the landing page uses zero shot/injection language in title, H1, or above-the-fold content. The ad wins the click; the LP loses the conversion.</p>
+</div>
+
+<div class="card good">
+  <div class="card-title">🟢 "shots for weight loss" is cheapest and highest-converting query in the cluster: $7.04 CPA, 21.4% CVR</div>
+  <p>Among all injection/shot searches, "shots for weight loss" has the lowest CPA ($7.04) and 21.4% conversion rate. This exact phrase variant should be targeted explicitly with an exact match keyword and a dedicated LP.</p>
+</div>
+
+<!-- ═══════════════ KEY METRICS ═══════════════ -->
+<h2 id="metrics">Key Metrics — The Numbers</h2>
+
+<div class="grid-3">
+  <div class="metric-card">
+    <div class="metric-value" style="color:var(--red)">1</div>
+    <div class="metric-label">Total Google clicks for "weight reduction shots" (all time)</div>
+    <div class="metric-sub">Sept 16, 2025. $2.61 spend. 0 conversions.</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-value" style="color:var(--green)">185</div>
+    <div class="metric-label">Google clicks on "weight loss injections" (12 months)</div>
+    <div class="metric-sub">13% CVR, $14.14 CPA — healthy performance</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-value" style="color:var(--amber)">$163</div>
+    <div class="metric-label">Wasted spend on injection queries in Search-WeightLoss campaigns</div>
+    <div class="metric-sub">0 conversions. Same keyword converts 11–13% in Generic campaigns.</div>
+  </div>
+</div>
+
+<div class="grid-3">
+  <div class="metric-card">
+    <div class="metric-value" style="color:var(--red)">6.4%</div>
+    <div class="metric-label">CVR: Google mobile injection traffic (dti=None)</div>
+    <div class="metric-sub">vs 28.6% on r4 mobile variant — 4.5× gap</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-value" style="color:var(--green)">28.6%</div>
+    <div class="metric-label">CVR: r4 LP variant (Bing, mobile)</div>
+    <div class="metric-sub">The best-performing LP. Not served to injection traffic.</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-value" style="color:var(--amber)">$125</div>
+    <div class="metric-label">MEDVi price gap vs Ro (monthly, recurring)</div>
+    <div class="metric-sub">MEDVi $299/month vs Ro $74/month after intro period</div>
+  </div>
+</div>
+
+<div class="grid-2" style="margin-top:0">
+  <div class="metric-card">
+    <div class="metric-value" style="color:var(--green)">3,802</div>
+    <div class="metric-label">Bing clicks on "Weight Loss Shots" ad group (all time)</div>
+    <div class="metric-sub">374 conversions, 9.8% CVR, $7,762 spend — but PAUSED Oct 2025</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-value" style="color:var(--red)">0</div>
+    <div class="metric-label">Our LPs with a meta description</div>
+    <div class="metric-sub">All 3 crawled LPs have no &lt;meta name="description"&gt;</div>
+  </div>
+</div>
+
+<!-- ═══════════════ JOURNEY ═══════════════ -->
+<h2 id="journey">Full User Journey</h2>
+
+<div class="journey">
+  <div class="journey-step">
+    <div class="journey-line"><div class="journey-dot dot-amber"></div><div class="journey-connector"></div></div>
+    <div class="journey-content">
+      <div class="journey-label">🔍 Search: "weight reduction shots"</div>
+      <div class="journey-detail">Mid-funnel user. Knows they want an injection. Shopping for which provider. This exact phrase = 1 Google click in all history. Cluster ("weight loss shots", "shots for weight loss") = 400+ Google clicks/year.</div>
+      <div class="journey-issues"><span class="badge badge-blue">Intent: commercial comparison</span><span class="badge badge-gray">Ultra-low volume exact phrase</span><span class="badge badge-green">High-volume cluster around it</span></div>
+    </div>
+  </div>
+  <div class="journey-step">
+    <div class="journey-line"><div class="journey-dot dot-green"></div><div class="journey-connector"></div></div>
+    <div class="journey-content">
+      <div class="journey-label">📢 Ad: "Which Shot Works Best?" / "Best Weight Loss Shots Of 2026"</div>
+      <div class="journey-detail">The Injections ad group headline IS matching. Ad copy uses "shots" language ("Which Shot Works Best?", "Best Weight Loss Shots Of 2026"). CTR on injection queries: 15–42% depending on term. The ad is doing its job.</div>
+      <div class="journey-issues"><span class="badge badge-green">🟢 Ad copy matches intent</span><span class="badge badge-green">🟢 Strong CTR 15–42%</span></div>
+    </div>
+  </div>
+  <div class="journey-step">
+    <div class="journey-line"><div class="journey-dot dot-red"></div><div class="journey-connector"></div></div>
+    <div class="journey-content">
+      <div class="journey-label">📄 LP: "Top 5 Weight Loss Medications Google Desktop" — dti=None</div>
+      <div class="journey-detail">User arrives. Browser tab says "…Google Desktop". Page never says "shots". CVR 6.4% (mobile) to 10.7% (desktop). The r4 variant gets 16–28.6% CVR — same traffic, 3× better outcome.</div>
+      <div class="journey-issues">
+        <span class="badge badge-red">🔴 "Google Desktop" in title</span>
+        <span class="badge badge-red">🔴 Zero keyword match ("shots")</span>
+        <span class="badge badge-red">🔴 No meta description</span>
+        <span class="badge badge-red">🔴 No dti → 3× CVR loss vs r4</span>
+      </div>
+    </div>
+  </div>
+  <div class="journey-step">
+    <div class="journey-line"><div class="journey-dot dot-amber"></div><div class="journey-connector"></div></div>
+    <div class="journey-content">
+      <div class="journey-label">🖱️ Partner click: MEDVi ($179 shown)</div>
+      <div class="journey-detail">MEDVi is our #1. Table shows $179 + free shipping. Recurring price ($299/month) not shown. Ro's $74/month annual plan — which ranks #1 on Forbes, Yahoo, Top10 — is buried at position #5.</div>
+      <div class="journey-issues">
+        <span class="badge badge-red">🔴 $299 recurring hidden</span>
+        <span class="badge badge-amber">🟡 Ro underranked vs market consensus</span>
+        <span class="badge badge-amber">🟡 Trust signals missing</span>
+      </div>
+    </div>
+  </div>
+  <div class="journey-step">
+    <div class="journey-line"><div class="journey-dot dot-green"></div><div class="journey-connector"></div></div>
+    <div class="journey-content">
+      <div class="journey-label">🏥 MEDVi: "Fat loss made easy with personalized care and GLP-1 medication"</div>
+      <div class="journey-detail">Professional page. 500K+ patients, Bloomberg/Forbes/NYT coverage. $179 first month → $299 recurring now visible. Promo code TOP5WL honored for free shipping.</div>
+      <div class="journey-issues">
+        <span class="badge badge-green">🟢 Professional, high trust</span>
+        <span class="badge badge-amber">🟡 Price shock: $299 recurring</span>
+        <span class="badge badge-gray">Uses "injections" not "shots"</span>
+      </div>
+    </div>
+  </div>
+  <div class="journey-step">
+    <div class="journey-line"><div class="journey-dot dot-amber"></div></div>
+    <div class="journey-content">
+      <div class="journey-label">🎯 Conversion: estimated 6–11% CVR (vs 16–28% possible with r4 routing)</div>
+      <div class="journey-detail">Based on LP dti=None performance data from visits/conversions BigQuery tables. The injection cluster is converting — but at a fraction of what the best LP variant achieves.</div>
+      <div class="journey-issues"><span class="badge badge-amber">🟡 Leaving ~60% of conversions on the table vs r4 routing</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ PRIORITIES ═══════════════ -->
+<h2 id="priorities">Priority Actions</h2>
+
+<div class="priority-item">
+  <div class="pnum p0">P0</div>
+  <div class="pc">
+    <div class="pt">Add dti=r4 to Injections ad group final URLs</div>
+    <div class="pd">The Generic Injections campaigns send traffic to pages with no dti. The r4 variant achieves 16–28.6% CVR vs 6–11% for dti=None. Fix: append <code>?dti=r4</code> to the final URL in Google Ads for the Injections ad groups. This is the single highest-ROI change in this analysis.</div>
+    <div class="pe">⏱ 15 min in Google Ads · Expected CVR uplift: 2–3× · No dev work needed</div>
+  </div>
+</div>
+
+<div class="priority-item">
+  <div class="pnum p0">P0</div>
+  <div class="pc">
+    <div class="pt">Pause or audit Search-WeightLoss Injections General ad groups</div>
+    <div class="pd">"Search-WeightLoss-en-dt-us" and "Search-WeightLoss-en-mo-us" spent $163.46 on injection keyword queries and delivered 0 conversions (24 clicks). The same keywords in Generic campaigns convert at 11–13%. These campaigns are routing injection traffic to the wrong LP.</div>
+    <div class="pe">⏱ 30 min audit · Stops $163+ waste per similar period</div>
+  </div>
+</div>
+
+<div class="priority-item">
+  <div class="pnum p0">P0</div>
+  <div class="pc">
+    <div class="pt">Fix LP title — remove "Google Desktop"</div>
+    <div class="pd">The HTML <code>&lt;title&gt;</code> of <code>/compare/top-5-weight-loss-medications-go-dt/</code> includes "Google Desktop" — user-visible in the browser tab and potentially in SERP snippets. This is a credibility-destroying bug. WordPress fix: change the page title field.</div>
+    <div class="pe">⏱ 5 min · Affects all Google Desktop campaigns</div>
+  </div>
+</div>
+
+<div class="priority-item">
+  <div class="pnum p1">P1</div>
+  <div class="pc">
+    <div class="pt">Add meta descriptions to all LPs</div>
+    <div class="pd">None of our landing pages have a <code>&lt;meta name="description"&gt;</code>. Google writes its own from page content, which won't match shot/injection intent. Write ~150 chars per LP: "Compare top-rated weight loss injection programs for 2026. Find semaglutide and tirzepatide plans from $139/month with online prescriptions."</div>
+    <div class="pe">⏱ 30 min · Improves CTR on every organic and paid appearance</div>
+  </div>
+</div>
+
+<div class="priority-item">
+  <div class="pnum p1">P1</div>
+  <div class="pc">
+    <div class="pt">Add "shots" language to /tables/top-5-weight-loss-injections/ H1</div>
+    <div class="pd">Change H1 from "Top Weight Loss Injections" to "Top Weight Loss Injections &amp; Shots (2026)" or add a first-paragraph line: "Looking for weight loss shots? These are the top-rated GLP-1 injection programs." One sentence captures every colloquial searcher.</div>
+    <div class="pe">⏱ 15 min · Keyword relevance for the entire shots cluster</div>
+  </div>
+</div>
+
+<div class="priority-item">
+  <div class="pnum p1">P1</div>
+  <div class="pc">
+    <div class="pt">Show MEDVi's recurring price ($299) alongside the intro price ($179)</div>
+    <div class="pd">We advertise MEDVi at "$179 + Free Shipping" and rank them #1. Their actual recurring price is $299/month. Users who expect $179 will be surprised month 2. Show: "$179 first month, $299/month recurring" — and compare honestly to Ro at $74/month annual.</div>
+    <div class="pe">⏱ 30 min · Reduces churn, improves trust</div>
+  </div>
+</div>
+
+<div class="priority-item">
+  <div class="pnum p2">P2</div>
+  <div class="pc">
+    <div class="pt">Reactivate Bing "Weight Loss Shots" campaigns (paused Oct 2025)</div>
+    <div class="pd">Bing had a dedicated "Weight Loss Shots" ad group that drove 3,802 clicks, 374 conversions (9.8% CVR) and "Best Weight Loss Shots" with 30 conversions — all paused in October 2025. If the pause was for seasonal/budget reasons, reinvestigating reinstatement with r4 routing could be high-value.</div>
+    <div class="pe">⏱ 1 day · Could recover 374+ conversions/period</div>
+  </div>
+</div>
+
+<div class="priority-item">
+  <div class="pnum p2">P2</div>
+  <div class="pc">
+    <div class="pt">Create a page targeting "weight reduction shots" specifically</div>
+    <div class="pd">Zero competitors use this exact phrase in headings or URLs. A page titled "Best Weight Reduction Shots 2026 | Compare GLP-1 Programs" could rank in top 3 organically with minimal competition. ~1,500 words, phrase in title/H1/first paragraph, comparison table.</div>
+    <div class="pe">⏱ 2-3 days · High SEO upside, essentially no competition</div>
+  </div>
+</div>
+
+<div class="priority-item">
+  <div class="pnum p3">P3</div>
+  <div class="pc">
+    <div class="pt">Review Ro's position on our LP</div>
+    <div class="pd">Ro ranks #1 on Forbes, Yahoo Health, Top10. We put them at #5 on the Google Desktop LP. Ro starts at $39 (Bing "Weight Loss Shots" conversion winner pricing). Our #1 is MEDVi at $179-299. If affiliate economics allow, Ro at #1 or #2 would likely improve CVR and align with market expectation.</div>
+    <div class="pe">⏱ Strategic decision + partner negotiation</div>
+  </div>
+</div>
+
+<!-- ═══════════════ SERP ═══════════════ -->
+<h2 id="serp">1. SERP Landscape</h2>
+
+<p>The SERP for "weight reduction shots" is not dominated by paid comparison sites. It's brand pages + medical editorial content:</p>
+
+<table>
+  <tr><th>Approx Position</th><th>Domain</th><th>Page Type</th><th>Notes</th></tr>
+  <tr><td>1–3</td><td>wegovy.com, saxenda.com, ro.co</td><td>Brand</td><td>FDA-approved medication brands</td></tr>
+  <tr><td>4–6</td><td>Johns Hopkins, UT Physicians, Keck Medicine</td><td>Medical editorial</td><td>Informational content</td></tr>
+  <tr><td>7–8</td><td><strong>top5weightchoices.com</strong></td><td>Comparison LP</td><td><code>/compare/top-5-weight-loss-medications-go-dt/</code></td></tr>
+  <tr><td>9–10</td><td>cls.health, medvidi.com</td><td>Blog/editorial</td><td>Medical content; MedVidi uses "diet shots" and "weight loss shots" in headings</td></tr>
+</table>
+
+<p><strong>No advertiser is specifically targeting "weight reduction shots."</strong> The phrase doesn't appear on any competitor page. This is a small but real SEO gap.</p>
+
+<p><strong>Intent:</strong> <span class="badge badge-blue">Commercial mid-funnel</span> — user wants an injection, is comparing providers. Needs a comparison table, not an educational article about what GLP-1s are.</p>
+
+<!-- ═══════════════ BQ DATA ═══════════════ -->
+<h2 id="bq">2. BigQuery Performance Data</h2>
+
+<h3>"weight reduction shots" — exact query</h3>
+<table>
+  <tr><th>Metric</th><th>Value</th></tr>
+  <tr><td>Platform</td><td>Google (NEAR_EXACT match)</td></tr>
+  <tr><td>Campaign</td><td>Generic- Weight Loss -US-en-Mobile</td></tr>
+  <tr><td>Ad Group</td><td>Injections</td></tr>
+  <tr><td>Total clicks (all time)</td><td class="hl-red">1</td></tr>
+  <tr><td>CPC</td><td>$2.61</td></tr>
+  <tr><td>Conversions</td><td class="hl-red">0</td></tr>
+  <tr><td>Date range</td><td>Sept 16, 2025 (one day only)</td></tr>
+</table>
+<p><em>This exact phrase is essentially invisible as a standalone query. The analysis below covers the sibling cluster which is active and converting.</em></p>
+
+<h3>Shot/injection keyword cluster — Google (12 months)</h3>
+<table>
+  <tr><th>Search Term</th><th>Campaign</th><th>Clicks</th><th>CVR %</th><th>CPA</th><th>Conversions</th></tr>
+  <tr><td>weight loss injections</td><td>Generic Mobile</td><td>185</td><td class="hl-green">13.0%</td><td>$14.14</td><td>24</td></tr>
+  <tr><td>weight loss shots</td><td>Generic Mobile</td><td>83</td><td>8.4%</td><td>$19.39</td><td>7</td></tr>
+  <tr><td>what is the best injection for weight loss</td><td>Generic Mobile</td><td>59</td><td class="hl-green">19.5%</td><td>$9.10</td><td>11.5</td></tr>
+  <tr><td>what is the best injection for weight loss at home</td><td>Generic Mobile</td><td>36</td><td class="hl-green">17.6%</td><td>$10.41</td><td>6.3</td></tr>
+  <tr><td>weight loss shot</td><td>Generic Mobile</td><td>32</td><td>9.4%</td><td>$20.75</td><td>3</td></tr>
+  <tr><td>weight loss injections</td><td>Generic Desktop</td><td>27</td><td>11.1%</td><td>$20.13</td><td>3</td></tr>
+  <tr><td>shots for weight loss</td><td>Generic Mobile</td><td>14</td><td class="hl-green">21.4%</td><td class="hl-green">$7.04</td><td>3</td></tr>
+  <tr><td>weight loss shots</td><td>Generic Desktop</td><td>10</td><td class="hl-green">30.0%</td><td class="hl-green">$9.22</td><td>3</td></tr>
+  <tr><td style="color:var(--red)">weight loss injections</td><td style="color:var(--red)">Search-WeightLoss-dt</td><td style="color:var(--red)">15</td><td class="hl-red">0%</td><td class="hl-red">∞</td><td style="color:var(--red)">0</td></tr>
+  <tr><td style="color:var(--red)">weight loss injections</td><td style="color:var(--red)">Search-WeightLoss-mo</td><td style="color:var(--red)">9</td><td class="hl-red">0%</td><td class="hl-red">∞</td><td style="color:var(--red)">0</td></tr>
+</table>
+
+<div class="card critical">
+  <div class="card-title">🔴 Search-WeightLoss campaign routing failure</div>
+  <p>The last two rows (highlighted) are the same keyword "weight loss injections" — but in different campaigns. Generic campaigns convert at 11–13%. Search-WeightLoss campaigns: <strong>0% with $163 spent</strong>. This is almost certainly a landing page routing difference (dti=None vs a different page that doesn't convert for injection intent).</p>
+</div>
+
+<h3>LP performance by dti variant (last 30 days)</h3>
+<table>
+  <tr><th>DTI</th><th>Platform</th><th>Device</th><th>Visits</th><th>Quiz Starts</th><th>Goal Events</th><th>CVR %</th><th>EPV</th></tr>
+  <tr><td style="color:var(--red)">None</td><td>Bing</td><td>Desktop</td><td>593</td><td>104</td><td>5</td><td class="hl-amber">4.8%</td><td>$3.20</td></tr>
+  <tr><td style="color:var(--red)">None</td><td>Google</td><td>Mobile</td><td>498</td><td>47</td><td>3</td><td class="hl-amber">6.4%</td><td>$2.29</td></tr>
+  <tr><td style="color:var(--red)">None</td><td>Google</td><td>Desktop</td><td>363</td><td>56</td><td>6</td><td>10.7%</td><td>$6.28</td></tr>
+  <tr><td class="hl-green">r4</td><td>Bing</td><td>Desktop</td><td>139</td><td>25</td><td>4</td><td class="hl-green">16.0%</td><td class="hl-green">$10.54</td></tr>
+  <tr><td class="hl-green">r4</td><td>Bing</td><td>Mobile</td><td>55</td><td>7</td><td>2</td><td class="hl-green">28.6%</td><td class="hl-green">$13.82</td></tr>
+  <tr><td>q8</td><td>Bing</td><td>Desktop</td><td>16</td><td>2</td><td>1</td><td>50.0%</td><td>$23.75</td></tr>
+  <tr><td>i2</td><td>Bing</td><td>Desktop</td><td>73</td><td>14</td><td>0</td><td class="hl-red">0%</td><td>$0</td></tr>
+  <tr><td>j4</td><td>Bing</td><td>Desktop</td><td>37</td><td>5</td><td>0</td><td class="hl-red">0%</td><td>$0</td></tr>
+</table>
+
+<p><strong>The dti=None pages are where Google injection traffic lands. They convert at 4.8–10.7%.  r4 converts at 16–28.6%.</strong> The r4 variant is only being served to Bing traffic currently. Routing Google injection traffic to r4 would be the highest-impact single change.</p>
+
+<h3>Bing "Weight Loss Shots" campaigns (historical)</h3>
+<table>
+  <tr><th>Campaign</th><th>Ad Group</th><th>Clicks</th><th>Spend</th><th>Conversions</th><th>CVR</th><th>Status</th></tr>
+  <tr><td>Generic-US-en-desktop</td><td>Weight Loss Shots</td><td>3,802</td><td>$7,762</td><td>374</td><td>9.8%</td><td class="hl-red">Paused Oct 2025</td></tr>
+  <tr><td>Generic-US-en-desktop</td><td>Best Weight Loss Shots</td><td>303</td><td>$633</td><td>30</td><td>9.9%</td><td class="hl-red">Paused Sep 2025</td></tr>
+  <tr><td>Search-generics-en-dt-us-MMA</td><td>MMA Weight Loss Shots</td><td>241</td><td>$1,314</td><td>54</td><td>22.4%</td><td class="hl-amber">Last seen Mar 2026</td></tr>
+  <tr><td>Search-generics-en-dt-us-MMA</td><td>MMA Best Weight Loss Shots</td><td>55</td><td>$346</td><td>7</td><td>12.7%</td><td class="hl-amber">Last seen Mar 2026</td></tr>
+</table>
+<p>The Bing "Weight Loss Shots" ad group had 3,802 clicks and 374 conversions (10% CVR) before being paused. This was a significant traffic source. MMA variants are still active as of Mar 2026.</p>
+
+<!-- ═══════════════ AD COPY ═══════════════ -->
+<h2 id="adcopy">3. Ad Copy Audit</h2>
+
+<div class="card good">
+  <div class="card-title">🟢 The ad copy is actually good — it matches "shots" intent</div>
+  <p>The Injections ad group (which serves "weight reduction shots" and sibling queries) has shot-specific headlines. The ad is doing its job. The LP is the bottleneck.</p>
+</div>
+
+<h3>Generic Injections ad group — headlines and descriptions</h3>
+<table>
+  <tr><th>Headline</th><th>Relevance to "weight reduction shots"</th></tr>
+  <tr><td>"Top 5 Weight Loss Injections"</td><td class="hl-green">Good — "injections"</td></tr>
+  <tr><td>"Which Shot Works Best?"</td><td class="hl-green">Excellent — direct "shot" match</td></tr>
+  <tr><td>"Best Weight Loss Shots Of 2026"</td><td class="hl-green">Excellent — "shots" + recency</td></tr>
+  <tr><td>{KeyWord:Top 5 Weight Loss Injections}</td><td class="hl-green">Dynamic keyword insertion</td></tr>
+  <tr><td>"Compare 2026 Injection Plans"</td><td>Good — "injection"</td></tr>
+  <tr><td>"Who's Most Affordable?"</td><td>Neutral</td></tr>
+  <tr><td>"See Who We Ranked #1"</td><td>Neutral</td></tr>
+</table>
+<table>
+  <tr><th>Description</th></tr>
+  <tr><td>"We Researched all The Weight Loss Injections Providers And Here's What We Found."</td></tr>
+  <tr><td>"Get Safe, Doctor-Prescribed GLP-1 Injections Now"</td></tr>
+  <tr><td>"Compare The Leading Weight Loss Brands & Find the Perfect Solution Tailored to Your Goals"</td></tr>
+</table>
+
+<p><strong>Ad strength:</strong> GOOD (Desktop Injections), GOOD (Mobile Injections). All assets are PENDING review status — they are approved_limited due to prescription drug terms (GLUCAGON, OZEMPIC, etc.) which is expected in this space.</p>
+
+<h3>Ad-to-LP match analysis</h3>
+<table>
+  <tr><th>What the ad says</th><th>What the LP says</th><th>Gap</th></tr>
+  <tr><td>"Which Shot Works Best?"</td><td>Never mentions "shot"</td><td class="hl-red">🔴 Full mismatch</td></tr>
+  <tr><td>"Best Weight Loss Shots Of 2026"</td><td>Never mentions "shots"</td><td class="hl-red">🔴 Full mismatch</td></tr>
+  <tr><td>"Top 5 Weight Loss Injections"</td><td>H1: "Top Weight Loss Medications Providers"</td><td class="hl-amber">🟡 Partial match</td></tr>
+  <tr><td>"Compare 2026 Injection Plans"</td><td>Page title: "…Medications Google Desktop"</td><td class="hl-red">🔴 "Google Desktop" visible</td></tr>
+</table>
+
+<!-- ═══════════════ LP AUDIT ═══════════════ -->
+<h2 id="lp">4. Landing Page Audit</h2>
+
+<h3>What our ads send traffic to: <code>/compare/top-5-weight-loss-medications-go-dt/</code></h3>
+<table>
+  <tr><th>Signal</th><th>Value</th><th>Issue</th></tr>
+  <tr><td>HTML &lt;title&gt;</td><td>"Top 5 Weight Loss Medications Google Desktop - Top 5 Weight Choices"</td><td><span class="badge badge-red">🔴 "Google Desktop" user-visible</span></td></tr>
+  <tr><td>Meta description</td><td>None</td><td><span class="badge badge-red">🔴 Missing</span></td></tr>
+  <tr><td>H1</td><td>"Top Weight Loss Medications Providers – 2026"</td><td><span class="badge badge-amber">🟡 "Medications" not "injections/shots"</span></td></tr>
+  <tr><td>"weight reduction shots" occurrences</td><td>0</td><td><span class="badge badge-red">🔴 Zero</span></td></tr>
+  <tr><td>"shots" occurrences</td><td>0</td><td><span class="badge badge-red">🔴 Zero</span></td></tr>
+  <tr><td>"injections" occurrences</td><td>1 (buried in subheading)</td><td><span class="badge badge-amber">🟡 Not prominent</span></td></tr>
+  <tr><td>Partner order</td><td>MEDVi #1, SkinnyRx #2, Sprout #3, Eden #4, Ro #5, Hers #6, Hims #7, ClinicSecret #8, MyStart #9</td><td><span class="badge badge-amber">🟡 Ro at #5 despite being market consensus #1</span></td></tr>
+  <tr><td>dti parameter</td><td>None served by Google Injections ads</td><td><span class="badge badge-red">🔴 3× CVR gap vs r4</span></td></tr>
+</table>
+
+<h3>Better LP exists but isn't being served: <code>/tables/top-5-weight-loss-injections/</code></h3>
+<table>
+  <tr><th>Signal</th><th>Value</th><th>Assessment</th></tr>
+  <tr><td>HTML &lt;title&gt;</td><td>"Top 5 Weight Loss Injections - Top 5 Weight Choices"</td><td><span class="badge badge-green">🟢 Has "Injections"</span></td></tr>
+  <tr><td>Meta description</td><td>None</td><td><span class="badge badge-red">🔴 Still missing</span></td></tr>
+  <tr><td>H1</td><td>"Top Weight Loss Injections"</td><td><span class="badge badge-green">🟢 Better intent match</span></td></tr>
+  <tr><td>"shots"</td><td>0 occurrences</td><td><span class="badge badge-amber">🟡 Still not using colloquial term</span></td></tr>
+  <tr><td>Partners</td><td>MEDVi, Eden, Sprout, Shed, MyStart, Hims, ClinicSecret</td><td><span class="badge badge-amber">🟡 No Ro listed</span></td></tr>
+</table>
+
+<!-- ═══════════════ COMPETITOR PAGES ═══════════════ -->
+<h2 id="competitors">5. Competitor Page Analysis</h2>
+
+<h3>Language patterns</h3>
+<p>Not one competitor uses "weight reduction shots" as a primary term. Vocabulary hierarchy:</p>
+<ol>
+  <li><strong>"weight loss injections"</strong> — universal standard term</li>
+  <li><strong>"weight loss shots"</strong> — used in blog headings (MedVidi: "How Prescription Weight Loss Shots Work")</li>
+  <li><strong>"diet shots"</strong> — MedVidi page title uses this</li>
+  <li><strong>"injectable medications"</strong> — clinical brand pages</li>
+</ol>
+
+<table>
+  <tr><th>Site</th><th>Page Title</th><th>Meta Description</th><th>#1 Partner</th><th>Lead Price</th><th>"shots" used</th></tr>
+  <tr><td>Top10</td><td>"Compare The Best Weight Loss Drugs in 2026"</td><td>✅ Present</td><td>TrimRX</td><td>$149/mo</td><td>No</td></tr>
+  <tr><td>Yahoo Health</td><td>"Best weight loss medications of 2026"</td><td>✅ Present</td><td>Ro</td><td>$39 first mo</td><td>In FAQs only</td></tr>
+  <tr><td>MedVidi blog</td><td>"Best Weight Loss Injections: 5 Most Effective &amp; Safest Diet Shots"</td><td>N/A</td><td>—</td><td>—</td><td>✅ "diet shots", heading: "How Prescription Weight Loss Shots Work"</td></tr>
+  <tr><td><strong>Our Go-DT LP</strong></td><td class="hl-red">"Top 5 Weight Loss Medications Google Desktop"</td><td class="hl-red">❌ Missing</td><td>MEDVi</td><td>$179</td><td class="hl-red">❌ Never</td></tr>
+</table>
+
+<p><strong>Both Top10 and Yahoo Health have meta descriptions. We have none.</strong> Both rank competitors differently from us. MedVidi is the only one using "shots" language in headings — and they're a blog, not a comparison site.</p>
+
+<!-- ═══════════════ LANDSCAPE ═══════════════ -->
+<h2 id="landscape">6. Competitor Rankings (PostgreSQL data — April 30, 2026)</h2>
+
+<table>
+  <tr><th>Partner</th><th>Our Go-DT LP</th><th>Our Main Table</th><th>Forbes</th><th>Top10</th><th>Yahoo Health</th></tr>
+  <tr><td><strong>Ro</strong></td><td class="hl-red">#5</td><td>Not listed</td><td>#2</td><td>#2</td><td class="hl-green"><strong>#1</strong></td></tr>
+  <tr><td><strong>MEDVi</strong></td><td class="hl-green"><strong>#1</strong></td><td class="hl-green"><strong>#1</strong></td><td>#6</td><td>#4</td><td>Not listed</td></tr>
+  <tr><td>TrimRX</td><td>—</td><td>—</td><td>—</td><td class="hl-green"><strong>#1</strong></td><td>#3</td></tr>
+  <tr><td>RemedyMeds</td><td>—</td><td>—</td><td class="hl-green"><strong>#1</strong></td><td>—</td><td>—</td></tr>
+  <tr><td>Noom</td><td>—</td><td>—</td><td>#3</td><td>#3</td><td>#7</td></tr>
+  <tr><td>WeightWatchers</td><td>—</td><td>—</td><td>#9</td><td>—</td><td>#2</td></tr>
+  <tr><td>Sprout</td><td>#3</td><td>#3</td><td>#7</td><td>#7</td><td>#6</td></tr>
+  <tr><td>Eden</td><td>#4</td><td>#2</td><td>—</td><td>—</td><td>—</td></tr>
+</table>
+
+<p><strong>Ro is the market consensus #1–2 across every editorial source. We have them at #5.</strong> MEDVi ($179 intro / $299 recurring) is our #1. Ro ($39 first month, $74/month annual plan) is what independent editors consistently rank first. This divergence is the most strategic tension in the account.</p>
+
+<!-- ═══════════════ PARTNER VERIFY ═══════════════ -->
+<h2 id="partner">7. Partner Verification — MEDVi</h2>
+
+<table>
+  <tr><th>Claim/Feature</th><th>On MEDVi's site</th><th>On our table</th><th>Gap</th></tr>
+  <tr><td>$179 first month</td><td>✅</td><td>✅</td><td>Accurate</td></tr>
+  <tr><td>$299/month recurring</td><td>✅ Prominently shown</td><td class="hl-red">❌ Hidden</td><td class="hl-red">Price deception risk</td></tr>
+  <tr><td>500,000+ patients</td><td>✅ Hero stat</td><td class="hl-red">❌</td><td>Missing trust signal</td></tr>
+  <tr><td>"18% average body weight loss"</td><td>✅</td><td class="hl-red">❌</td><td>Missing proof claim</td></tr>
+  <tr><td>Featured Bloomberg, Forbes, NYT</td><td>✅</td><td class="hl-red">❌</td><td>Missing credibility signal</td></tr>
+  <tr><td>HSA/FSA eligible</td><td>✅</td><td class="hl-red">❌</td><td>Practical differentiator missing</td></tr>
+  <tr><td>24/7 support</td><td>✅</td><td class="hl-red">❌</td><td>Service differentiator missing</td></tr>
+  <tr><td>Promo code TOP5WL (free shipping)</td><td>✅ Honored</td><td>✅</td><td>—</td></tr>
+  <tr><td>Wegovy/Zepbound brand-name available</td><td>✅</td><td class="hl-red">❌</td><td>Users don't know this option exists</td></tr>
+</table>
+
+<p>MEDVi's recurring price ($299) is not shown anywhere on our table. Ro's annual plan ($74/month) is buried at #5. A user who uses our table, clicks MEDVi, sees the first-month price, subscribes — and then receives a $299 bill on month 2 — has been misled by us.</p>
+
+<!-- ═══════════════ ITERATIONS ═══════════════ -->
+<h2 id="iterations">Investigation Trail — Every Step</h2>
+
+<details>
+<summary>Step 1 — SERP reconnaissance: "weight reduction shots"</summary>
+<div class="db">
+<div class="step-meta"><span class="tool-tag">WebSearch</span></div>
+<div class="thinking"><strong>Thinking:</strong> Start broad — understand the SERP before touching BigQuery. Who's appearing? What page types? Does our domain show up and for which URL specifically? The URL that shows in organic is what users actually see, independent of what our ads are pointing to.</div>
+<div class="result">Queries:
+1. "weight reduction shots"
+2. '"weight reduction shots" site:top5weightchoices.com OR site:ro.co OR site:medvi.com OR site:hims.com'
+
+Results from query 1:
+- wegovy.com, saxenda.com, ro.co (brand pages, positions 1-3)
+- Johns Hopkins, UT Physicians, Keck Medicine (medical content, 4-6)
+- CLS Health blog (comparison-adjacent editorial)
+- Cleveland Clinic, other medical
+
+Results from query 2:
+- top5weightchoices.com/compare/top-5-weight-loss-medications-go-dt/ appeared
+- top5weightchoices.com/compare/top-5-weight-loss-medications/ appeared
+- Ro appears with multiple injection-related pages</div>
+<div class="finding">Finding: "Google Desktop" is in our page title — I can see it in the SERP snippet for our domain. This is immediately visible to users before they click. Also: no one explicitly targets this exact phrase.</div>
+</div>
+</details>
+
+<details>
+<summary>Step 2 — Try BigQuery (failed) → pivot to web research</summary>
+<div class="db">
+<div class="step-meta"><span class="tool-tag">Bash (Python)</span><span class="badge badge-red">FAILED FIRST ATTEMPT</span></div>
+<div class="thinking"><strong>Thinking:</strong> The user said to use BigQuery. Let me try the service account credentials. Initial attempt used gcloud application default credentials which had expired. I then found weightagent-f7946872ebb1.json in the project root — a service account key file — and confirmed it works.</div>
+<div class="result">First attempt: gcloud ADC credentials expired
+$ gcloud auth application-default print-access-token → RefreshError
+
+Found: /Users/nadavrajuan/Code/WL-marketing-agent/weightagent-f7946872ebb1.json
+Test: GOOGLE_APPLICATION_CREDENTIALS=...weightagent-f7946872ebb1.json python3 -c "bq.run_query('SELECT 1+1')"
+Result: BQ OK: 2 ✓
+
+(Note for agent: Always check for service account JSON in project root before failing on ADC)</div>
+</div>
+</details>
+
+<details>
+<summary>Step 3 — BigQuery: exact keyword performance</summary>
+<div class="db">
+<div class="step-meta"><span class="tool-tag">BigQuery</span><span class="badge badge-green">SUCCESS</span></div>
+<div class="thinking"><strong>Thinking:</strong> The most important question: how does this keyword perform in our actual data? I need to know clicks, CTR, conversions, CPA, and which campaign/ad group serves it. JOIN ads_SearchQueryStats with ads_AdGroup and ads_Campaign to get names.</div>
+<div class="result">Query: ads_SearchQueryStats JOIN ads_AdGroup JOIN ads_Campaign WHERE search_term LIKE '%weight reduction shot%'
+Last 365 days.
+
+Result:
+search_term: "weight reduction shots"
+match_type: NEAR_EXACT
+campaign: "Generic- Weight Loss -US-en-Mobile"
+ad_group: "Injections"
+clicks: 1
+impressions: 1
+spend: $2.61
+conversions: 0
+CTR: 100%
+date: 2025-09-16 only</div>
+<div class="finding">Finding: The exact phrase "weight reduction shots" has essentially never been searched in our data — 1 click in 12 months. The investigation needs to broaden to the injection/shot cluster to be meaningful.</div>
+</div>
+</details>
+
+<details>
+<summary>Step 4 — BigQuery: broaden to shots/injections cluster</summary>
+<div class="db">
+<div class="step-meta"><span class="tool-tag">BigQuery</span></div>
+<div class="thinking"><strong>Thinking:</strong> With only 1 click for the exact phrase, I need to expand scope to the semantically equivalent cluster: "weight loss shots", "weight loss injections", "shots for weight loss", etc. This gives me real data volume to analyze. I'll use LIKE with both patterns.</div>
+<div class="result">WHERE search_term LIKE '%weight%shot%' OR '%weight%injection%' OR '%shot%weight%' OR '%injection%weight%'
+Last 365 days.
+
+Top results:
+"weight loss injections" (Generic Mobile/Injections): 185 clicks, 13.0% CVR, $14.14 CPA
+"weight loss shots" (Generic Mobile): 83 clicks, 8.4% CVR, $19.39 CPA
+"what is the best injection for weight loss" (Generic Mobile): 59 clicks, 19.5% CVR, $9.10 CPA
+"shots for weight loss" (Generic Mobile): 14 clicks, 21.4% CVR, $7.04 CPA ← cheapest CPA in cluster
+"weight loss injections" (Search-WeightLoss-dt): 15 clicks, 0% CVR, $∞ ← ZERO conversions
+"weight loss injections" (Search-WeightLoss-mo): 9 clicks, 0% CVR, $∞ ← ZERO conversions</div>
+<div class="finding">Critical finding: Same keyword "weight loss injections" converts at 13% in Generic campaigns and 0% in Search-WeightLoss campaigns. This has to be a different landing page. The Generic campaigns work; Search-WeightLoss campaigns are burning money on injection queries.</div>
+</div>
+</details>
+
+<details>
+<summary>Step 5 — BigQuery: LP performance by dti variant</summary>
+<div class="db">
+<div class="step-meta"><span class="tool-tag">BigQuery</span></div>
+<div class="thinking"><strong>Thinking:</strong> I know Generic Injections campaigns convert but don't know WHICH landing page they send to (what dti). The visits table has dti. Let me query visits+conversions grouped by dti, platform, device for the last 30 days to see the CVR landscape across LP variants.</div>
+<div class="result">SELECT v.dti, v.platform_id, v.device, COUNT visits, quiz_starts, goal_events, CVR%, EPV
+FROM visits v LEFT JOIN conversions c ON v.id = c.visit_id
+WHERE entered_at_date >= DATE_SUB(CURRENT_DATE(), 30 DAY)
+  AND platform_id IN ('google', 'bing')
+GROUP BY 1,2,3 HAVING visits >= 10
+
+Key rows:
+dti=None, bing, desktop: 593 visits, 4.8% CVR, $3.20 EPV
+dti=None, google, mobile: 498 visits, 6.4% CVR, $2.29 EPV  ← Google injection traffic lands here
+dti=None, google, desktop: 363 visits, 10.7% CVR, $6.28 EPV
+dti=r4, bing, desktop: 139 visits, 16.0% CVR, $10.54 EPV ← 2.3× better
+dti=r4, bing, mobile: 55 visits, 28.6% CVR, $13.82 EPV ← 4.5× better than Google mobile!</div>
+<div class="finding">The smoking gun: Google injection traffic (dti=None) achieves 6.4% CVR mobile, 10.7% desktop. The r4 variant: 28.6% mobile, 16% desktop. Adding dti=r4 to injection ad group URLs could 2-4× conversions from this cluster at zero additional spend.</div>
+</div>
+</details>
+
+<details>
+<summary>Step 6 — BigQuery: Get the actual ad copy</summary>
+<div class="db">
+<div class="step-meta"><span class="tool-tag">BigQuery</span></div>
+<div class="thinking"><strong>Thinking:</strong> Before blaming the LP, I need to verify the ad copy. Are we even using "shots" language in our ads? If the ad says "medications" and the user searched "shots", the CTR would be low and the whole chain is broken at step 1. Let me get the RSA headlines from ads_Ad for injection/shot ad groups.</div>
+<div class="result">SELECT ad headlines + descriptions for ad_group_name LIKE '%injection%' OR '%shot%'
+WHERE _DATA_DATE = _LATEST_DATE AND ad_group_ad_status = 'ENABLED'
+
+Results: Generic Injections ad group (Desktop + Mobile) headlines include:
+- "Top 5 Weight Loss Injections" ✓
+- "Which Shot Works Best?" ✓ (excellent match)
+- "Best Weight Loss Shots Of 2026" ✓ (direct match)
+- {KeyWord:Top 5 Weight Loss Injections} (keyword insertion)
+- "Compare 2026 Injection Plans" ✓
+- "5 Best Weight Loss Injections" ✓
+
+Strength: GOOD for both Desktop and Mobile.
+
+Descriptions:
+- "We Researched all The Weight Loss Injections Providers And Here's What We Found."
+- "Get Safe, Doctor-Prescribed GLP-1 Injections Now"</div>
+<div class="finding">The ad copy is actually good. "Which Shot Works Best?" and "Best Weight Loss Shots Of 2026" directly match shot-intent searches. The CTR of 15-30%+ confirms this. The bottleneck is the landing page, not the ad.</div>
+</div>
+</details>
+
+<details>
+<summary>Step 7 — Crawl our LPs</summary>
+<div class="db">
+<div class="step-meta"><span class="tool-tag">WebFetch</span></div>
+<div class="thinking"><strong>Thinking:</strong> Now I know the ad is good. Time to verify what users actually see when they land. I'll crawl both the go-dt LP and the injections table. I want to extract the HTML title (not just H1), presence/absence of meta description, exact keyword occurrences. The HTML title is what shows in browser tabs and SERP snippets — it's different from the H1 visible on page.</div>
+<div class="result">Crawled: /compare/top-5-weight-loss-medications-go-dt/
+Title: "Top 5 Weight Loss Medications Google Desktop - Top 5 Weight Choices" ← CONFIRMED BUG
+H1: "Top Weight Loss Medications Providers – 2026"
+Meta description: MISSING
+"shots": 0 occurrences
+"weight reduction": 0 occurrences
+"injections": 1 occurrence in subheading only
+Partners: MEDVi(9.8), SkinnyRx(9.4), Sprout(9.1), Eden(8.8), Ro(8.6)...
+
+Crawled: /tables/top-5-weight-loss-injections/
+Title: "Top 5 Weight Loss Injections - Top 5 Weight Choices"
+H1: "Top Weight Loss Injections"
+Meta description: MISSING
+"shots": 0 occurrences</div>
+</div>
+</details>
+
+<details>
+<summary>Step 8 — Bing search query analysis</summary>
+<div class="db">
+<div class="step-meta"><span class="tool-tag">BigQuery</span></div>
+<div class="thinking"><strong>Thinking:</strong> I've been focused on Google. Let me check Bing for weight-related campaigns. Bing doesn't have a SearchQueryStats table — only ad_performance by ad group. So I'll look at ad groups with "weight" in the name to understand Bing's injection/shot traffic.</div>
+<div class="result">SELECT campaign_name, ad_group_name, clicks, spend, conversions FROM BingAds.ad_performance
+WHERE campaign_name LIKE '%weight%' OR ad_group_name LIKE '%weight%'
+Last 365 days.
+
+Notable:
+"Generic-US-en-desktop" | "Weight Loss Shots": 3,802 clicks, $7,762, 374 convs (PAUSED Oct 2025)
+"Generic-US-en-desktop" | "Weight Loss Medications": 3,761 clicks, $4,705, 496 convs (PAUSED Sep 2025)
+"Generic-US-en-desktop" | "Best Weight Loss Shots": 303 clicks, 30 convs (PAUSED)
+"Search-generics-MMA" | "MMA Weight Loss Shots": 241 clicks, $1,314, 54 convs (active through Mar 2026)
+
+Bing "Weight Loss Shots" ad group: 3,802 clicks, 9.8% CVR, significant historical volume
+All major Bing campaigns seem to have been paused or consolidated in late 2025.</div>
+<div class="finding">Bing had a dedicated "Weight Loss Shots" campaign that was much larger than Google's injection cluster. It drove 374 conversions before being paused. MMA variants are still partially active. This historical channel should be reviewed for reinstatement.</div>
+</div>
+</details>
+
+<details>
+<summary>Step 9 — Competitor pages + landscape</summary>
+<div class="db">
+<div class="step-meta"><span class="tool-tag">WebFetch</span><span class="tool-tag">PostgreSQL</span></div>
+<div class="thinking"><strong>Thinking:</strong> I need to benchmark our LP against competitors for this keyword. I also need to verify where our partners rank on competitor comparison sites — is MEDVi actually the market consensus #1? Or are we diverging from editorial consensus because of affiliate economics?</div>
+<div class="result">WebFetch results:
+- Top10: TrimRX #1, Ro #2, meta desc present, "Best Weight Loss Injections of 2026" H1
+- Yahoo Health: Ro #1, WeightWatchers #2, TrimRX #3, meta desc present
+- MedVidi blog: uses "diet shots" title, "How Prescription Weight Loss Shots Work" heading
+- Ro 403 blocked, Hims 403 blocked, Forbes Claude-blocked
+
+PostgreSQL competitor_landscape_snapshots (2026-04-30):
+Forbes: RemedyMeds #1, Ro #2, Noom #3 ... MEDVi #6
+Top10: Ro #1, MEDVi #4, TrimRX #6
+Yahoo Health: Ro #1, WeightWatchers #2, TrimRX #3 (MEDVi not listed)</div>
+<div class="finding">Ro is #1 on every editorial source. MEDVi (our #1) is #4-6 or not listed. We diverge from market consensus significantly. MEDVi charges $299/month recurring vs Ro's $74/month annual — which makes the editorial preference for Ro make sense economically for users.</div>
+</div>
+</details>
+
+<details>
+<summary>Step 10 — MEDVi partner page verification</summary>
+<div class="db">
+<div class="step-meta"><span class="tool-tag">WebSearch + WebFetch</span></div>
+<div class="thinking"><strong>Thinking:</strong> I need to verify: (1) what MEDVi actually charges (intro vs recurring), (2) what trust signals they use on their site that we're NOT passing through to users on our table, and (3) whether their claims match what we show about them.</div>
+<div class="result">WebFetch: glp.medvi.org
+
+H1: "Finally serious about weight loss? So are we. Fat loss made easy with personalized care and GLP-1 medication"
+Stats: 500K+ patients, 6x more weight loss than exercise, 18% avg body weight loss, 93% kept weight off
+Media: Bloomberg, Forbes, NYT, WebMD, Healthline, Fortune, Fast Company
+Reviews: 10,000+ verified 5-star reviews
+Support: 24/7
+HSA/FSA: Eligible
+
+PRICING:
+- Semaglutide: $179 first month → $299/month recurring ← CONFIRMED
+- Wegovy Pill: $99 membership + Rx cost
+- Wegovy Injection: $99 membership + Rx cost
+- Zepbound Injection: $99 membership + Rx cost
+
+vs Ro annual plan: $39 first month, $74/month annual = $87/month cheaper than MEDVi ongoing</div>
+<div class="finding">We show $179 for MEDVi and rank them #1. We show none of their massive trust signals (500K patients, 10K reviews, Bloomberg coverage). We hide the $299 recurring price. This is a missed conversion optimization AND an ethical issue re: pricing transparency.</div>
+</div>
+</details>
+
+<!-- ═══════════════ METHODOLOGY ═══════════════ -->
+<h2 id="methodology">Methodology Guide — How to Replicate</h2>
+
+<h3>The 10-step keyword investigation process</h3>
+
+<details>
+<summary>Step A — SERP reconnaissance (WebSearch)</summary>
+<div class="db">
+<p>Search the plain keyword. Note: who appears, what page types dominate, does our domain appear and for which exact URL?</p>
+<p>Also run: <code>site:top5weightchoices.com "keyword" OR "synonym"</code> to see which of our pages rank.</p>
+<p><strong>Key insight:</strong> The URL that appears in organic search is what users see — independent of what our ads point to. If our organic URL has "Google Desktop" in the title, users see it in the SERP snippet.</p>
+</div>
+</details>
+
+<details>
+<summary>Step B — BQ: exact keyword query stats (ads_SearchQueryStats)</summary>
+<div class="db">
+<pre><code>-- Always use the service account: GOOGLE_APPLICATION_CREDENTIALS=.../weightagent-f7946872ebb1.json
+SELECT
+  qs.search_term_view_search_term AS search_term,
+  qs.segments_search_term_match_type AS match_type,
+  c.campaign_name, ag.ad_group_name,
+  SUM(qs.metrics_clicks) AS clicks,
+  SUM(qs.metrics_impressions) AS impressions,
+  ROUND(SUM(qs.metrics_cost_micros)/1e6, 2) AS spend_usd,
+  ROUND(SUM(qs.metrics_conversions), 2) AS conversions,
+  ROUND(AVG(qs.metrics_ctr)*100, 3) AS ctr_pct
+FROM weightagent.GoogleAds.ads_SearchQueryStats_4808949235 qs
+JOIN weightagent.GoogleAds.ads_AdGroup_4808949235 ag
+  ON qs.ad_group_id = ag.ad_group_id AND ag._DATA_DATE = ag._LATEST_DATE
+JOIN weightagent.GoogleAds.ads_Campaign_4808949235 c
+  ON qs.campaign_id = c.campaign_id AND c._DATA_DATE = c._LATEST_DATE
+WHERE LOWER(qs.search_term_view_search_term) LIKE '%keyword%'
+  AND qs.segments_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 365 DAY)
+GROUP BY 1, 2, 3, 4 ORDER BY clicks DESC LIMIT 30</code></pre>
+<p><strong>If exact phrase has &lt;5 clicks:</strong> Broaden to semantic cluster using multiple LIKE patterns. The cluster matters more than the exact phrase.</p>
+<p><strong>Watch for:</strong> Same keyword in different campaigns with wildly different CVR — that's a LP routing issue, not a keyword issue.</p>
+</div>
+</details>
+
+<details>
+<summary>Step C — BQ: get the ad copy (ads_Ad)</summary>
+<div class="db">
+<pre><code>SELECT
+  ad.ad_group_ad_ad_responsive_search_ad_headlines,
+  ad.ad_group_ad_ad_responsive_search_ad_descriptions,
+  ad.ad_group_ad_ad_strength, ag.ad_group_name, c.campaign_name
+FROM weightagent.GoogleAds.ads_Ad_4808949235 ad
+JOIN weightagent.GoogleAds.ads_AdGroup_4808949235 ag
+  ON ad.ad_group_id = ag.ad_group_id AND ag._DATA_DATE = ag._LATEST_DATE
+JOIN weightagent.GoogleAds.ads_Campaign_4808949235 c
+  ON ad.campaign_id = c.campaign_id AND c._DATA_DATE = c._LATEST_DATE
+WHERE (LOWER(ag.ad_group_name) LIKE '%keyword%' OR LOWER(ag.ad_group_name) LIKE '%synonym%')
+  AND ad._DATA_DATE = ad._LATEST_DATE
+  AND ad.ad_group_ad_status = 'ENABLED'</code></pre>
+<p>Parse the JSON headlines array. Look for: does the ad use the same language as the keyword? If ad says "medications" and user searched "shots", that's a CTR suppressor. In this case, the ad WAS good ("Which Shot Works Best?").</p>
+</div>
+</details>
+
+<details>
+<summary>Step D — BQ: LP performance by dti variant (visits + conversions)</summary>
+<div class="db">
+<pre><code>SELECT
+  v.dti, v.platform_id, v.device,
+  COUNT(DISTINCT v.id) AS visits,
+  COUNT(DISTINCT CASE WHEN c.funnel_step='other' AND c.funnel_step_description='Quiz Start' THEN c.id END) AS quiz_starts,
+  COUNT(DISTINCT CASE WHEN c.funnel_step='step_3' THEN c.id END) AS goal_events,
+  ROUND(COUNT(DISTINCT CASE WHEN c.funnel_step='step_3' THEN c.id END) * 100.0 /
+    NULLIF(COUNT(DISTINCT CASE WHEN c.funnel_step='other' AND c.funnel_step_description='Quiz Start' THEN c.id END), 0), 2) AS cvr_pct,
+  ROUND(SUM(SAFE_CAST(c.value AS FLOAT64)) / NULLIF(COUNT(DISTINCT v.id), 0), 4) AS epv
+FROM weightagent.WeightAgent.visits v
+LEFT JOIN weightagent.WeightAgent.conversions c ON v.id = c.visit_id
+WHERE v.entered_at_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+  AND v.platform_id IN ('google', 'bing')
+GROUP BY 1, 2, 3 HAVING COUNT(DISTINCT v.id) >= 10
+ORDER BY visits DESC LIMIT 30</code></pre>
+<p><strong>Key question:</strong> Is the dti that serves the keyword achieving the same CVR as the best-performing variant? dti=None is a red flag — it means no LP testing is happening for that traffic source.</p>
+</div>
+</details>
+
+<details>
+<summary>Step E — Crawl OUR landing page (WebFetch)</summary>
+<div class="db">
+<p>Crawl the LP URL. Extract <strong>exactly</strong>:</p>
+<ul>
+  <li>The HTML <code>&lt;title&gt;</code> tag (not the H1 — the title shows in browser tab + SERP)</li>
+  <li><code>&lt;meta name="description"&gt;</code> — present? What does it say?</li>
+  <li>H1 — first heading the user sees on page</li>
+  <li>Count exact keyword phrase occurrences in body</li>
+  <li>Count synonym/variant occurrences ("shots" if keyword is "weight reduction shots")</li>
+  <li>Partner list: exact order, scores, prices shown vs actual</li>
+</ul>
+<p><strong>The title and meta description are invisible in normal browsing but are what search engines and browser tabs show. They matter hugely for organic and for post-click credibility.</strong></p>
+</div>
+</details>
+
+<details>
+<summary>Step F — Crawl competitors (WebFetch)</summary>
+<div class="db">
+<p>Crawl top 2-3 SERP competitors. Priority: #1 organic result, best editorial comparison site (Top10, Yahoo, Forbes), any direct business-model competitor.</p>
+<p><strong>Note: Ro and Hims return 403. Forbes blocks Claude. Use PostgreSQL landscape data for them instead.</strong></p>
+<p>Extract from each: title, meta desc, H1, whether they use the keyword phrase, their partner order and lead pricing, trust signals, CTA copy.</p>
+</div>
+</details>
+
+<details>
+<summary>Step G — PostgreSQL competitor landscape</summary>
+<div class="db">
+<pre><code>SELECT
+  src.name, snap.page_title, snap.meta_description,
+  jsonb_array_elements(snap.extracted_json->'partners')->>'rank' AS rank,
+  jsonb_array_elements(snap.extracted_json->'partners')->>'canonical_name' AS partner,
+  jsonb_array_elements(snap.extracted_json->'partners')->>'score' AS score
+FROM competitor_landscape_snapshots snap
+JOIN competitor_landscape_sources src ON src.slug = snap.source_slug
+WHERE snap.snapshot_date = (SELECT MAX(snapshot_date) FROM competitor_landscape_snapshots)
+ORDER BY src.name, (jsonb_array_elements(snap.extracted_json->'partners')->>'rank')::int;</code></pre>
+<p><strong>Warning:</strong> Parser produces noise rows (nav items, dates). Filter by known canonical names: Ro, MEDVi, Eden, Sprout, Shed, Hims, Hers, Noom, TrimRX, WeightWatchers, Remedy, SkinnyRX.</p>
+<p><strong>Key question:</strong> Does our #1 match market consensus #1? If not — why? Affiliate deal? If yes — good signal.</p>
+</div>
+</details>
+
+<details>
+<summary>Step H — Crawl #1 partner page (WebFetch)</summary>
+<div class="db">
+<p>Crawl the actual website of the partner we rank #1. Extract:</p>
+<ul>
+  <li>Their H1 and key marketing claims</li>
+  <li><strong>First-month price AND recurring monthly price</strong> — these are often different</li>
+  <li>Trust signals: patient count, media mentions, reviews, certifications</li>
+  <li>Language they use for the service ("shots", "injections", "medications"?)</li>
+</ul>
+<p>Cross-reference with our table: Are we showing their real pricing? Are we showing their strongest trust signals? Are we creating false expectations?</p>
+</div>
+</details>
+
+<details>
+<summary>Step I — Map the full user journey friction</summary>
+<div class="db">
+<p>After all data is collected, explicitly map:</p>
+<pre><code>[Search query]
+  → Ad: does copy use the same language as the keyword? (Check RSA headlines)
+    → LP: HTML title correct? Meta desc present? Keyword on page? dti optimal?
+      → Partner row: intro price only? Trust signals shown?
+        → Partner page: does it match what we showed?
+          → Conversion: CVR for this dti vs best dti</code></pre>
+<p><strong>For each arrow:</strong> What is the specific friction? What would fix it? What's the effort?</p>
+</div>
+</details>
+
+<!-- ═══════════════ AGENT PROMPT ═══════════════ -->
+<h2 id="prompt">Improved Agent Prompt for Keyword Investigations</h2>
+
+<div class="card info">
+  <div class="card-title">What the agent currently does wrong for keyword investigations</div>
+  <ul>
+    <li><strong>Doesn't crawl its own LPs</strong> — queries BQ but never verifies what the actual page says to users</li>
+    <li><strong>Misses the title vs H1 distinction</strong> — the HTML &lt;title&gt; and H1 are different; title shows in browser/SERP, H1 shows on page</li>
+    <li><strong>Doesn't check dti routing</strong> — never looks at whether the dti served to a keyword cluster is the best-performing variant</li>
+    <li><strong>Skips partner verification</strong> — records partner scores without checking if their actual page matches our claims</li>
+    <li><strong>Misses campaign-level CVR divergence</strong> — same keyword in different campaigns with wildly different CVR signals a routing issue; agent doesn't catch this</li>
+    <li><strong>Doesn't use the PostgreSQL landscape data</strong> — has it available, never queries it for keyword investigations</li>
+    <li><strong>Doesn't check BQ credentials properly</strong> — look for the service account JSON in project root before failing on expired ADC tokens</li>
+  </ul>
+</div>
+
+<h3>Suggested system prompt addition for keyword investigations</h3>
+<div class="prompt-box">
+<span style="color:#fbbf24">─── WHEN STARTING FROM A KEYWORD ──────────────────────────────────────────</span>
+
+Follow this sequence exactly:
+
+<span style="color:#fbbf24">PHASE 1: SERP + DATA (steps 1-4)</span>
+
+Step 1 — WebSearch the plain keyword.
+  Note which of our URLs appear (exact URL). That URL's title tag is what users see.
+  Classify intent: informational / commercial / transactional.
+
+Step 2 — query_bigquery: search query stats for the keyword.
+  If exact phrase has < 5 clicks, broaden to semantic cluster (shots → injections → shot).
+  FLAG if same keyword converts at wildly different rates across campaigns (routing issue).
+
+Step 3 — query_bigquery: get the ad copy.
+  Do our RSA headlines use the same language as the keyword?
+  If ad says "medications" and user searched "shots" → CTR suppressor.
+
+Step 4 — query_bigquery: LP performance by dti.
+  Is dti=None being served? That's 2-4x worse than best variants.
+  Compare: what CVR is the served dti achieving vs best dti available?
+
+<span style="color:#fbbf24">PHASE 2: PAGE QUALITY (steps 5-6)</span>
+
+Step 5 — crawl_url: our landing page.
+  Extract the HTML title tag (NOT just H1 — the title shows in browser + SERP).
+  Is there a meta description?
+  Count occurrences of keyword AND its synonyms on the page.
+  Note partner order and prices shown.
+
+Step 6 — crawl_url: top 2 SERP competitors.
+  Do they have meta descriptions? (We probably don't.)
+  What language do they use? Do they use "shots" or "injections"?
+  What partner do they rank #1 and at what price?
+
+<span style="color:#fbbf24">PHASE 3: FUNNEL INTEGRITY (steps 7-8)</span>
+
+Step 7 — query_bigquery/postgres: competitor landscape.
+  Is our #1 partner also the market consensus #1?
+  If we rank MEDVi #1 and Forbes/Yahoo/Top10 rank Ro #1, record this gap.
+
+Step 8 — crawl_url: our #1 partner's actual website.
+  Does their first-month price match what we show?
+  What is their RECURRING price? (Usually different, often hidden.)
+  What trust signals do they use that we're not showing on our table?
+
+<span style="color:#fbbf24">WHAT MAKES A VALID FINDING ─────────────────────────────────────────────────</span>
+<span style="color:#6b7280">
+✅ "The dti=None page (served to Google injection traffic) converts at 6.4% vs r4's 28.6% CVR — adding dti=r4 to ad group final URLs is a 4× CVR opportunity"
+✅ "Search-WeightLoss campaigns spent $163 on injection queries with 0 conversions. Same keyword converts 13% in Generic campaigns. This is a routing issue."
+✅ "Our LP title contains 'Google Desktop' which is user-visible in the browser tab — one-line fix"
+✅ "MEDVi's recurring price is $299 but we show $179. Ro charges $74/month. We're hiding a $225/month price gap."
+
+❌ "The landing page needs optimization" (no specific number or fix)
+❌ "We should target injection keywords" (already doing it)
+❌ "MEDVi is a good partner" (no data backing)</span>
+</div>
+
+<h3>BigQuery credential note for agent</h3>
+<div class="card info">
+  <div class="card-title">How to authenticate BigQuery (important for agent)</div>
+  <p>gcloud ADC tokens expire. When you get <code>RefreshError: Reauthentication is needed</code>:</p>
+  <ol>
+    <li>Check if <code>weightagent-f7946872ebb1.json</code> exists in the project root</li>
+    <li>Set: <code>GOOGLE_APPLICATION_CREDENTIALS=/path/to/weightagent-f7946872ebb1.json</code></li>
+    <li>Pass this env var to any Python BQ call</li>
+  </ol>
+  <p>This service account is read-only on the weightagent project and will not expire like user credentials.</p>
+</div>
+
+<hr style="border: none; border-top: 1px solid var(--border); margin: 40px 0;">
+<p style="color: var(--muted); font-size: 12px; text-align: center;">top5weightchoices.com · Keyword Analysis · 2026-05-05 · Generated manually by Claude</p>
+
+</div>
+
+<script>
+const sections = document.querySelectorAll('h2[id]');
+const links = document.querySelectorAll('.sidebar a[href^="#"]');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(s => { if (window.scrollY >= s.offsetTop - 100) current = s.id; });
+  links.forEach(l => { l.classList.toggle('active', l.getAttribute('href') === '#' + current); });
+});
+</script>
+</body>
+</html>

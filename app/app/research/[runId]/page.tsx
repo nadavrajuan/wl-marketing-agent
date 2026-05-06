@@ -218,16 +218,26 @@ export default function ResearchRunPage({ params }: { params: Promise<{ runId: s
   const [liveSteps, setLiveSteps] = useState<LiveStep[]>([]);
   const [viewMode, setViewMode] = useState<"report" | "trail">("report");
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [polling, setPolling] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const fetchRun = async () => {
-    const res = await fetch(`/api/research/${runId}`);
-    if (!res.ok) return;
-    const data: ResearchRun = await res.json();
-    setRun(data);
-    setLoading(false);
-    return data;
+    try {
+      const res = await fetch(`/api/research/${runId}`);
+      if (!res.ok) {
+        setLoading(false);
+        return undefined;
+      }
+      const data: ResearchRun = await res.json();
+      setRun(data);
+      setLoading(false);
+      return data;
+    } catch {
+      setLoading(false);
+      setFetchError(true);
+      return undefined;
+    }
   };
 
   useEffect(() => {
@@ -269,9 +279,10 @@ export default function ResearchRunPage({ params }: { params: Promise<{ runId: s
       es.close();
       eventSourceRef.current = null;
       setPolling(false);
-      const interval = setInterval(async () => {
-        const data = await fetchRun();
-        if (data?.status !== "running") clearInterval(interval);
+      const interval = setInterval(() => {
+        fetchRun().then((data) => {
+          if (data?.status !== "running") clearInterval(interval);
+        }).catch(() => clearInterval(interval));
       }, 3000);
     };
   }
@@ -280,11 +291,13 @@ export default function ResearchRunPage({ params }: { params: Promise<{ runId: s
     return <div className="flex items-center justify-center h-64 text-gray-500 text-sm">Loading…</div>;
   }
 
-  if (!run) {
+  if (fetchError || !run) {
     return (
-      <div className="text-center text-gray-500 text-sm py-16">
-        Run not found.{" "}
-        <button onClick={() => router.push("/research")} className="text-indigo-400 hover:underline">Back</button>
+      <div className="text-center text-gray-500 text-sm py-16 space-y-3">
+        <div>{fetchError ? "Could not load this run." : "Run not found."}</div>
+        <button onClick={() => router.push("/research")} className="text-indigo-400 hover:underline">
+          ← Back to Research
+        </button>
       </div>
     );
   }
@@ -441,12 +454,27 @@ export default function ResearchRunPage({ params }: { params: Promise<{ runId: s
         </div>
       )}
 
-      {/* Completed, no sections */}
-      {!isRunning && sections.length === 0 && run.status === "completed" && (
-        <div className="rounded-2xl border border-gray-800 bg-gray-900 p-8 text-center space-y-3">
-          <div className="text-gray-500 text-sm">Research completed with no report sections.</div>
-          {run.executive_summary && <div className="text-gray-300 text-sm max-w-lg mx-auto">{run.executive_summary}</div>}
-          {run.error_log?.length > 0 && <div className="text-red-400 text-xs">{run.error_log[0]}</div>}
+      {/* Completed or failed with no sections */}
+      {!isRunning && sections.length === 0 && (
+        <div className={`rounded-2xl border p-8 text-center space-y-3 ${
+          run.status === "failed" ? "border-red-900/50 bg-red-950/20" : "border-gray-800 bg-gray-900"
+        }`}>
+          <div className={`text-sm ${run.status === "failed" ? "text-red-400" : "text-gray-500"}`}>
+            {run.status === "failed" ? "Research run failed." : "Research completed with no report sections."}
+          </div>
+          {run.executive_summary && (
+            <div className="text-gray-300 text-sm max-w-lg mx-auto">{run.executive_summary}</div>
+          )}
+          {run.error_log?.length > 0 && (
+            <div className="text-left mt-4 space-y-1">
+              {run.error_log.map((e, i) => (
+                <div key={i} className="text-xs text-red-400 font-mono bg-red-950/30 rounded px-3 py-1.5">{e}</div>
+              ))}
+            </div>
+          )}
+          <button onClick={() => router.push("/research")} className="text-indigo-400 hover:underline text-xs">
+            ← Start a new run
+          </button>
         </div>
       )}
     </div>
