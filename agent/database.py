@@ -750,140 +750,196 @@ DEFAULT_TEMPLATES = {
         "model": "gpt-4.5-preview",
         "is_builtin": True,
         "system_prompt": """INVESTIGATION TEMPLATE: Keyword Deep-Dive
-Follow these phases in order. You may combine phases if data is clear, but never skip Phase 1 (SERP) or Phase 5 (LP crawl).
+Follow these 9 phases. Standard depth gives you 14 steps — roughly 1-2 steps per phase.
+Never skip Phase 1 (SERP) or Phase 5 (LP crawl). Use search_web for SERP and search tasks.
 
-━━━ PHASE 1 — SERP RECONNAISSANCE (WebSearch) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ PHASE 1 — SERP RECONNAISSANCE (search_web) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Search the keyword verbatim. Record:
-- Who appears (brand pages, editorial, comparison sites, our domain)
-- What page types dominate (reviews? brand? clinical content?)
-- Whether our URL appears organically and for which specific URL
-- What language competitors use for this concept
-
-The organic URL is what users see regardless of what the ad serves.
+Call search_web with the keyword verbatim. Record:
+- Who appears in results (brand pages, editorial, comparison sites, our domain)
+- What URL of ours shows up organically — this is what users see before clicking
+- What language do ranking pages use for this concept (e.g. "shots" vs "injections")
+- Also search: 'site:top5weightchoices.com "KEYWORD"' to confirm our organic URL
 
 ━━━ PHASE 2 — KEYWORD PERFORMANCE (query_bigquery) ━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Query ads_SearchQueryStats_4808949235 using LIKE patterns on the keyword.
-Join with ads_AdGroup_4808949235 and ads_Campaign_4808949235 to get campaign/ad group names.
-Get: impressions, clicks, CTR, conversions, cost, CPC.
+Query search term performance. Always run TWO queries: (a) exact term, (b) semantic cluster.
 
-IMPORTANT: If the exact term returns fewer than 10 clicks, immediately expand to the semantic cluster.
-For "weight reduction shots" → also query "weight loss shots", "weight loss injections", "diet shots".
-Run both queries. Thin data on exact term is normal; the cluster tells the story.
+Query A — Exact term:
+  SELECT sq.search_term_view_search_term AS search_term,
+    sq.segments_search_term_match_type AS match_type,
+    c.campaign_name, ag.ad_group_name,
+    SUM(sq.metrics_clicks) AS clicks,
+    ROUND(SUM(sq.metrics_cost_micros)/1e6, 2) AS spend,
+    ROUND(SUM(sq.metrics_conversions), 1) AS conversions,
+    ROUND(SUM(sq.metrics_conversions)/NULLIF(SUM(sq.metrics_clicks),0)*100, 1) AS cvr_pct,
+    ROUND(SUM(sq.metrics_cost_micros)/1e6/NULLIF(SUM(sq.metrics_conversions),0), 2) AS cpa
+  FROM weightagent.GoogleAds.ads_SearchQueryStats_4808949235 sq
+  JOIN weightagent.GoogleAds.ads_AdGroup_4808949235 ag
+    ON sq.ad_group_id = ag.ad_group_id AND ag._DATA_DATE = ag._LATEST_DATE
+  JOIN weightagent.GoogleAds.ads_Campaign_4808949235 c
+    ON sq.campaign_id = c.campaign_id AND c._DATA_DATE = c._LATEST_DATE
+  WHERE sq.segments_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 365 DAY)
+    AND LOWER(sq.search_term_view_search_term) LIKE '%KEYWORD%'
+  GROUP BY 1,2,3,4 ORDER BY clicks DESC LIMIT 20
+
+Query B — Expand to semantic cluster (replace with relevant synonyms):
+  Same query but with: LOWER(sq.search_term_view_search_term) LIKE '%shot%'
+    OR LOWER(sq.search_term_view_search_term) LIKE '%injection%'
+  (adjust patterns for the keyword at hand)
+
+If exact term has < 10 clicks: the cluster data IS the story. Record both results.
 
 ━━━ PHASE 3 — AD COPY VERIFICATION (query_bigquery) ━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Query ads_Ad_4808949235 filtered by the ad_group_id from Phase 2.
-RSA headlines and descriptions are stored as JSON arrays — parse them.
-Key question: does the ad use the user's own language?
-If user searched "shots" but ad says "medications" → the chain breaks at impression level. Record this as a finding.
+Get RSA ad headlines for the ad group identified in Phase 2:
+  SELECT ag.ad_group_name, ad.ad_group_ad_ad_strength,
+    ad.ad_group_ad_ad_responsive_search_ad_headlines,
+    ad.ad_group_ad_ad_responsive_search_ad_descriptions
+  FROM weightagent.GoogleAds.ads_Ad_4808949235 ad
+  JOIN weightagent.GoogleAds.ads_AdGroup_4808949235 ag
+    ON ad.ad_group_id = ag.ad_group_id AND ag._DATA_DATE = ag._LATEST_DATE
+  WHERE ad._DATA_DATE = ad._LATEST_DATE
+    AND ad.ad_group_ad_status = 'ENABLED'
+    AND LOWER(ag.ad_group_name) LIKE '%injection%'  -- adjust to match found ad group
+  LIMIT 5
+
+Key question: does the ad use the searcher's own vocabulary? "shots" in ad vs "medications" in LP = chain break.
 
 ━━━ PHASE 4 — LP ROUTING BY DTI (query_bigquery) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Query WeightAgent.visits LEFT JOIN WeightAgent.conversions.
-Group by dti, device. Calculate CVR (goal_events / quiz_starts) and EPV (revenue / visits).
-Find which dti variant receives the campaign's traffic.
-dti=None (untagged) is a critical finding — these visits have no LP assignment.
-CVR varies 4-5x across dti variants. Wrong routing is often the biggest single lever.
+  SELECT v.dti, v.platform_id, v.device,
+    COUNT(DISTINCT v.id) AS visits,
+    COUNT(DISTINCT CASE WHEN c.funnel_step='other' AND c.funnel_step_description='Quiz Start' THEN c.id END) AS quiz_starts,
+    COUNT(DISTINCT CASE WHEN c.funnel_step='step_3' THEN c.id END) AS goal_events,
+    ROUND(COUNT(DISTINCT CASE WHEN c.funnel_step='step_3' THEN c.id END) /
+      NULLIF(COUNT(DISTINCT CASE WHEN c.funnel_step='other' AND c.funnel_step_description='Quiz Start' THEN c.id END),0)*100, 1) AS cvr_pct,
+    ROUND(SUM(SAFE_CAST(c.value AS FLOAT64)) / NULLIF(COUNT(DISTINCT v.id),0), 2) AS epv
+  FROM weightagent.WeightAgent.visits v
+  LEFT JOIN weightagent.WeightAgent.conversions c ON v.id = c.visit_id
+  WHERE v.entered_at_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+    AND v.platform_id IN ('google', 'bing')
+  GROUP BY 1,2,3 HAVING visits >= 10
+  ORDER BY visits DESC LIMIT 20
+
+dti=NULL means no LP variant assigned — Google traffic often lands here. CVR gap between dti=NULL and r4/other variants IS the finding.
 
 ━━━ PHASE 5 — OUR LP AUDIT (crawl_url) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Crawl the LP URL for the dti found in Phase 4. Extract in this order:
-1. HTML <title> tag — what shows in browser tabs AND SERP snippets. Different from H1. "Google Desktop" or internal labels in the title are credibility-killing bugs.
-2. <meta name="description"> — if missing, note it explicitly. Google writes its own, losing intent match.
-3. H1 text — the first heading the user sees.
-4. Keyword presence — count occurrences of the exact search term AND semantic variants. Zero = zero relevance signal.
-5. Partner list — names, order, scores, prices shown.
-6. Trust signals — testimonials, patient count, date updated.
+Crawl the LP URL for the dti found in Phase 4. Use: https://top5weightchoices.com/compare/ or /tables/ paths.
+Extract in this exact order:
+1. HTML <title> — shown in browser tabs AND SERP snippets. Internal labels ("Google Desktop") here = credibility bug.
+2. <meta name="description"> — if absent, note explicitly. Google writes its own, losing keyword match.
+3. H1 text
+4. Count occurrences of the exact search keyword AND semantic variants ("shots", "injections")
+5. Partner order — which partner is #1, what price shown, is intro vs recurring price clear?
+6. Any trust signals visible above the fold
 
-━━━ PHASE 6 — COMPETITOR LP AUDIT (crawl_url) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ PHASE 6 — COMPETITOR LP AUDIT (crawl_url / search_web) ━━━━━━━━━━━━━━━━━━
 
-Crawl the top 2-3 organic results from Phase 1. For each:
-- Page title and meta description (do they have one? what does it say?)
-- H1 and heading structure
-- Whether they use the exact keyword phrase or semantic variants
-- Partner #1, lead price shown, trust signals, CTA copy
+Crawl the top 2-3 URLs from Phase 1. For each record:
+- HTML title and meta description (text + present/absent)
+- H1 and whether keyword appears in it
+- Partner ranked #1, lead price shown
+- Any trust signals
 
-If a competitor page returns 403 → note it, use PostgreSQL competitor_landscape_snapshots instead.
+If crawl returns 403 → use search_web to get the snippet, and supplement with Phase 7 PostgreSQL data.
 
-━━━ PHASE 7 — COMPETITOR LANDSCAPE (query_data, PostgreSQL) ━━━━━━━━━━━━━━━━━
+━━━ PHASE 7 — COMPETITOR LANDSCAPE (query_postgres) ━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Run this query:
-  SELECT src.name, snap.page_title, snap.meta_description,
-    elem->>'rank' AS rank, elem->>'canonical_name' AS partner, elem->>'score' AS score
+  SELECT src.name AS source, snap.snapshot_date,
+    elem->>'rank' AS rank,
+    elem->>'canonical_name' AS partner,
+    elem->>'score' AS score,
+    elem->>'price' AS price
   FROM competitor_landscape_snapshots snap
   JOIN competitor_landscape_sources src ON src.slug = snap.source_slug
   CROSS JOIN LATERAL jsonb_array_elements(snap.extracted_json->'partners') AS elem
   WHERE snap.snapshot_date = (SELECT MAX(snapshot_date) FROM competitor_landscape_snapshots)
-  ORDER BY src.name, (elem->>'rank')::int NULLS LAST LIMIT 150;
+  ORDER BY src.name, (elem->>'rank')::int NULLS LAST
+  LIMIT 150
 
-Find: where does our #1 partner rank on Forbes, Top10, Yahoo Health?
-Is our ranking diverging from editorial consensus? That divergence is intentional — but it needs justification when CVR is low.
+Find: Where does our #1 partner rank across Forbes, Top10, Yahoo Health?
+Divergence between our ranking and editorial consensus needs justification — especially when CVR is low.
 
 ━━━ PHASE 8 — BING CHECK (query_bigquery) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Query BingAds.ad_performance for the same keyword pattern (LIKE '%keyword%' in ad_group_name or campaign_name).
-Get: clicks, spend, conversions. Same metrics as Google.
-A paused Bing campaign for a converting keyword cluster is a finding.
-Zero Bing data where Google converts well is also a finding.
+  SELECT campaign_name, ad_group_name,
+    SUM(clicks) AS clicks, SUM(spend) AS spend, SUM(conversions) AS convs,
+    ROUND(SUM(conversions)/NULLIF(SUM(clicks),0)*100, 1) AS cvr_pct
+  FROM weightagent.BingAds.ad_performance
+  WHERE data_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 365 DAY)
+    AND (LOWER(ad_group_name) LIKE '%KEYWORD_ROOT%' OR LOWER(campaign_name) LIKE '%KEYWORD_ROOT%')
+  GROUP BY 1,2 ORDER BY clicks DESC LIMIT 20
+
+A paused Bing campaign for a keyword that converts on Google = strong finding.
 
 ━━━ PHASE 9 — PARTNER PAGE VERIFICATION (crawl_url) ━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Crawl our #1 partner's actual website. Verify:
-1. Intro price vs. recurring price — we may show month-1, they show month-2. The delta is a finding.
-2. Trust signals on their site (patient count, media mentions, certifications) that we don't surface on our table.
-3. Claims we make about the partner vs. what they actually say. Mismatches erode trust.
-4. Medications offered — are we accurately representing their formulary?
+Crawl our #1 partner's actual site. Verify:
+1. Intro price vs recurring price — we likely show month-1, they show month-2+
+2. Trust signals they show (patient count, media logos, reviews) that we don't surface
+3. Medications/products listed vs what we claim about them
+4. If blocked → use search_web "[partner name] pricing 2026"
 
 ━━━ EXCEPTION HANDLING ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-- BQ returns 0 rows for exact keyword → expand to LIKE '%root%' immediately, do not stop or record "no data"
-- crawl_url returns 403 or connection error → note the block, proceed with PostgreSQL landscape or WebSearch snippet
-- Partner page shows no pricing → WebSearch "[partner name] pricing" to find current rates
-- dti=None dominates visits → this IS the finding — flag as critical LP routing gap
-- BQ query error (type mismatch) → fix and retry: Google IDs are INTEGER, Bing campaign/ad group are STRING
-- Tool call error → skip it, record what data you have, continue to next phase
-- No Bing data → note it, check if ad group name pattern is different
+- BQ returns 0 rows for exact keyword → run cluster query immediately, do not record "no data"
+- crawl_url returns 403 → use search_web for the domain, continue
+- Partner shows no pricing → search_web "[partner] pricing" to find current rates
+- dti=NULL dominates → this IS the critical finding — flag it with the CVR gap vs best dti
+- BQ type error → check: Google IDs are INTEGER, Bing campaign/ad_group IDs are STRING
+- Tool fails → record what you have, move to next phase, do not retry same failing call
+
+━━━ FINDINGS FORMAT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Every record_finding MUST include specific numbers. Bad: "CVR is low". Good: "dti=None Google mobile: 6.4% CVR, 498 visits — vs r4 Bing mobile: 28.6% CVR, 55 visits — 4.5× gap".
+Every finding needs: what the number is, why it matters, what action it implies.
 
 ━━━ REPORT REQUIREMENTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Final report must include:
-1. Executive summary with 3 key numbers from this keyword's data
-2. Full funnel breakdown: Search → Ad → LP → Partner, what works and what breaks at each step
-3. Competitor comparison table: us vs top 2 competitors on title, meta, keyword match, partner #1
-4. Priority actions P0-P3, each backed by a specific number from the data""",
+Your final executive_summary MUST contain:
+1. 3-5 critical/warning/good callouts, each with a specific number (clicks, CVR%, spend, CPA)
+2. Full funnel walkthrough: what happens at Search → Ad → LP → Partner — what works and what breaks
+3. Competitor comparison: us vs top 2 competitors — title, meta description, keyword in page, partner #1, price shown
+4. Priority actions P0 through P3, each with: specific number that justifies it + rough effort estimate""",
         "step_prompt": """Starting point: [{starting_point_type}] "{starting_point_value}"
-Phase context: {current_focus}
+Phase: {current_focus}
 Step {iteration}/{max_iterations} — {remaining} remaining
 
-Actions so far:
+Actions taken:
 {actions_taken}
 
-Findings:
+Findings so far:
 {findings}
 
 Direction changes: {direction_changes}
 
 ────────────────────────────────────────────────────────────────────
-Run through this checklist for where you are in the investigation:
+Where are you in the investigation? Run the next uncompleted phase:
 
-No data yet → Phase 1: WebSearch the keyword first. Then Phase 2: query BigQuery for search query stats.
+Phase 1 not done → search_web the keyword verbatim. Also search 'site:top5weightchoices.com KEYWORD'.
 
-Have keyword stats → Phase 3: verify the ad copy. Phase 4: find the LP dti from visits data.
+Phase 2 not done → query_bigquery: search query stats for exact keyword + semantic cluster (365 days). Use the SQL template from system prompt.
 
-Have dti → Phase 5: crawl our actual LP. Extract HTML title, meta description, keyword presence.
+Phase 3 not done → query_bigquery: RSA headlines for the injection/shots ad group. Does ad use the searcher's language?
 
-Have our LP data → Phase 6: crawl top 2 competitor pages for the same keyword.
+Phase 4 not done → query_bigquery: visits+conversions grouped by dti, platform, device (last 30 days). Find the CVR gap.
 
-Have competitor pages → Phase 7: query PostgreSQL competitor_landscape_snapshots for partner rankings.
+Phase 5 not done → crawl_url our LP (top5weightchoices.com path). Extract: title, meta description, H1, keyword count, partner order.
 
-Have landscape data → Phase 8: check Bing. Phase 9: crawl the #1 partner's page. Verify claimed price vs actual.
+Phase 6 not done → crawl_url top 2 competitor URLs from Phase 1. If 403 → search_web for their content.
 
-Near end (≤ 4 steps left) → stop opening new phases. Record remaining findings with specific numbers. Then finish.
+Phase 7 not done → query_postgres the competitor_landscape_snapshots table. Use exact SQL from system prompt.
 
-If a tool fails → note it, move to next phase. Do not retry the same failing call.
-SQL schema reference is in the system prompt.""",
+Phase 8 not done → query_bigquery Bing ad_performance for keyword pattern (365 days).
+
+Phase 9 not done → crawl_url our #1 partner's site. Find intro vs recurring price, trust signals.
+
+≤ 2 steps left → wrap up. Record any outstanding findings with numbers. Call finish.
+
+After every data query: call record_finding with specific numbers — not qualitative observations.
+If a tool fails → note it, move to the next phase immediately.""",
     },
 }
 
@@ -892,11 +948,14 @@ def _seed_templates(db: Session):
     for tid, data in DEFAULT_TEMPLATES.items():
         existing = db.query(ResearchTemplate).filter_by(id=tid).first()
         if existing and existing.is_builtin:
-            # update built-in fields except system_prompt/step_prompt/model
-            # (user may have customized those; only update if they haven't changed)
+            # Always sync built-in templates from code — code is the source of truth.
+            # Users who want custom prompts should create a new template instead.
             existing.name = data["name"]
             existing.description = data["description"]
             existing.starting_point_types = json.dumps(data["starting_point_types"])
+            existing.system_prompt = data.get("system_prompt")
+            existing.step_prompt = data.get("step_prompt")
+            existing.model = data.get("model")
             existing.is_builtin = True
         elif not existing:
             db.add(ResearchTemplate(

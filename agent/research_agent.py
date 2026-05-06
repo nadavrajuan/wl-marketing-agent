@@ -66,15 +66,37 @@ IMPORTANT PRINCIPLES:
 - RSA ads are already testing systems — prefer soft optimization (replace weak lines, keep strong ones)
 - Never copy competitors blindly — describe what was observed and what it may suggest
 - Distinguish: evidence | hypothesis | recommendation | open_question
-- ALL analytics data is in BigQuery. The PostgreSQL database holds only app config — do NOT query it for marketing analytics.
+- All funnel/spend/keyword analytics are in BigQuery. Use query_bigquery for those.
+- Use query_postgres ONLY for competitor_landscape_snapshots (see PG_SCHEMA below). Do NOT query other PG tables for analytics.
 """
 
-# PostgreSQL holds app config only — no marketing analytics data there.
 PG_SCHEMA = """
 ── PostgreSQL ────────────────────────────────────────────────────────────────────
-NOTE: The PostgreSQL database contains only application configuration (prompts, settings).
-      It has NO marketing analytics data. Do NOT use query_postgres for any analytics.
-      Use query_bigquery for all funnel, keyword, spend, and conversion analysis.
+Use query_postgres ONLY for competitor landscape data. Do NOT use it for funnel/spend/keyword analytics — those are in BigQuery.
+
+TABLE competitor_landscape_snapshots
+  id (SERIAL), source_slug (STRING FK→competitor_landscape_sources.slug),
+  snapshot_date (DATE), page_title (TEXT), meta_description (TEXT),
+  extracted_json (JSONB) — contains a "partners" array:
+    [{"rank": "1", "canonical_name": "Ro", "score": "9.5", "price": "$39/mo", "url": "..."}, ...]
+
+TABLE competitor_landscape_sources
+  id (SERIAL), slug (STRING PK, e.g. "forbes", "top10", "yahoo_health"),
+  name (STRING), url (TEXT)
+
+COMPETITOR LANDSCAPE QUERY (always use this pattern):
+  SELECT src.name AS source, snap.page_title, snap.meta_description,
+    snap.snapshot_date,
+    elem->>'rank' AS rank,
+    elem->>'canonical_name' AS partner,
+    elem->>'score' AS score,
+    elem->>'price' AS price
+  FROM competitor_landscape_snapshots snap
+  JOIN competitor_landscape_sources src ON src.slug = snap.source_slug
+  CROSS JOIN LATERAL jsonb_array_elements(snap.extracted_json->'partners') AS elem
+  WHERE snap.snapshot_date = (SELECT MAX(snapshot_date) FROM competitor_landscape_snapshots)
+  ORDER BY src.name, (elem->>'rank')::int NULLS LAST
+  LIMIT 150;
 """
 
 BQ_SCHEMA = """
@@ -693,11 +715,20 @@ class ResearchState(TypedDict):
 # ─── LangGraph: tool schemas (for bind_tools — execution is in tools_node) ───
 
 @tool
+def search_web(query: str, purpose: str) -> str:
+    """Search the web using DuckDuckGo. Returns top results with title, URL, and snippet.
+    Use for SERP reconnaissance — who ranks for a keyword, what language competitors use,
+    what pages exist for a topic. Also useful when crawl_url is blocked (403).
+    query: the search query (e.g. 'weight reduction shots site:top5weightchoices.com').
+    purpose: what you want to learn."""
+    return "executed"
+
+@tool
 def query_postgres(sql: str, purpose: str) -> str:
-    """Run a SELECT query against the PostgreSQL app database.
-    NOTE: This database contains only app configuration — NO marketing analytics data.
-    Use query_bigquery for all funnel, keyword, spend, and conversion analysis.
-    sql: valid PostgreSQL SELECT.
+    """Run a SELECT query against the PostgreSQL database.
+    Use ONLY for competitor_landscape_snapshots and competitor_landscape_sources tables.
+    Do NOT use for funnel, keyword, or spend data — those are in BigQuery.
+    sql: valid PostgreSQL SELECT (see PG_SCHEMA for table structure).
     purpose: one sentence describing what you want to learn."""
     return "executed"
 
@@ -744,7 +775,7 @@ def finish(reason: str) -> str:
     return "done"
 
 
-_TOOLS = [query_bigquery, crawl_url, record_finding, change_direction, finish]
+_TOOLS = [search_web, query_bigquery, query_postgres, crawl_url, record_finding, change_direction, finish]
 
 
 # ─── LangGraph: graph builder ─────────────────────────────────────────────────
@@ -769,7 +800,8 @@ def _build_research_graph(
     system_text = (
         prompts["research_system"] + "\n\n"
         + DOMAIN_CONTEXT + "\n\n"
-        + BQ_SCHEMA
+        + BQ_SCHEMA + "\n\n"
+        + PG_SCHEMA
     )
     system_msg = SystemMessage(content=system_text)
 
@@ -832,8 +864,41 @@ def _build_research_graph(
             tid  = tc["id"]
 
             try:
+                # ── search_web ──────────────────────────────────────────────
+                if name == "search_web":
+                    query   = args.get("query", "")
+                    purpose = args.get("purpose", "")
+                    if cb:
+                        cb(run_id, iteration, "search_web", f"Web search: {query}", query, "", 0)
+
+                    result_str = ""
+                    try:
+                        from duckduckgo_search import DDGS
+                        with DDGS() as ddgs:
+                            results = list(ddgs.text(query, max_results=10))
+                        lines = []
+                        for i, r in enumerate(results, 1):
+                            lines.append(f"{i}. {r.get('title', '')}")
+                            lines.append(f"   URL: {r.get('href', '')}")
+                            lines.append(f"   {r.get('body', '')[:250]}")
+                        result_str = "\n".join(lines)
+                    except Exception as exc:
+                        result_str = f"Search error: {exc}"
+                        new_errors.append(result_str)
+
+                    if cb:
+                        cb(run_id, iteration, "search_web",
+                           f"Search returned {result_str.count(chr(10))+1} lines", query, result_str[:300], 0)
+
+                    new_actions.append({
+                        "action_type": "search_web", "title": f"Search: {query}",
+                        "data_source": query, "result_preview": result_str[:300],
+                    })
+                    current_focus = purpose or current_focus
+                    tool_messages.append(ToolMessage(content=result_str[:2000], tool_call_id=tid))
+
                 # ── query_postgres ──────────────────────────────────────────
-                if name == "query_postgres":
+                elif name == "query_postgres":
                     sql     = args.get("sql", "").strip().strip("```sql").strip("```").strip()
                     purpose = args.get("purpose", "")
                     if cb:
