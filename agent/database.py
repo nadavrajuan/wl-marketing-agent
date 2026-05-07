@@ -747,7 +747,7 @@ DEFAULT_TEMPLATES = {
         "name": "Keyword Deep-Dive",
         "description": "Structured 9-phase investigation: SERP → keyword data → ad copy → LP routing → LP crawl → competitor crawl → competitor landscape → Bing → partner verification.",
         "starting_point_types": ["keyword"],
-        "model": "gpt-4.5-preview",
+        "model": "gpt-5.4",
         "is_builtin": True,
         "system_prompt": """INVESTIGATION TEMPLATE: Keyword Deep-Dive
 Follow these 9 phases. Standard depth gives you 14 steps — roughly 1-2 steps per phase.

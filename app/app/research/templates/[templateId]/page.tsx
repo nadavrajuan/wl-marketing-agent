@@ -16,14 +16,19 @@ const SP_TYPE_OPTIONS = [
 ];
 
 const MODEL_SUGGESTIONS: { id: string; label: string; note: string }[] = [
+  { id: "gpt-5.5",          label: "gpt-5.5",          note: "frontier" },
+  { id: "gpt-5.5-pro",      label: "gpt-5.5-pro",      note: "frontier" },
+  { id: "gpt-5.4",          label: "gpt-5.4",          note: "frontier" },
+  { id: "gpt-5.4-mini",     label: "gpt-5.4-mini",     note: "fast" },
+  { id: "gpt-5.4-nano",     label: "gpt-5.4-nano",     note: "fast" },
+  { id: "gpt-5",            label: "gpt-5",            note: "" },
+  { id: "gpt-5-mini",       label: "gpt-5-mini",       note: "fast" },
+  { id: "gpt-4.1",          label: "gpt-4.1",          note: "" },
   { id: "o4-mini",          label: "o4-mini",          note: "reasoning" },
-  { id: "o4.5",             label: "o4.5",             note: "reasoning" },
   { id: "o3",               label: "o3",               note: "reasoning" },
-  { id: "o3-mini",          label: "o3-mini",          note: "reasoning" },
+  { id: "o3-pro",           label: "o3-pro",           note: "reasoning" },
   { id: "gpt-4.5-preview",  label: "gpt-4.5-preview",  note: "" },
-  { id: "gpt-4.5",          label: "gpt-4.5",          note: "" },
   { id: "gpt-4o",           label: "gpt-4o",           note: "" },
-  { id: "gpt-4o-mini",      label: "gpt-4o-mini",      note: "" },
 ];
 
 const VARIABLES: { name: string; desc: string }[] = [

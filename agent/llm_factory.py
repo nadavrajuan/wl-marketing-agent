@@ -12,7 +12,7 @@ def create_llm(model: str = None, temperature: float = 0.2):
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set")
-    resolved = model or os.getenv("OPENAI_MODEL", "gpt-4.5-preview")
+    resolved = model or os.getenv("OPENAI_MODEL", "gpt-5.4")
 
     kwargs: dict = {"model": resolved, "api_key": api_key}
     if not _is_reasoning_model(resolved):
